@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="拍照羅盤">
+<meta name="theme-color" content="#c8a84b">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.svg">
+<title>拍照羅盤</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;600;900&family=Cinzel+Decorative:wght@400;700&display=swap');
+
+  :root {
+    --gold: #c8a84b;
+    --gold-light: #f0d080;
+    --gold-dark: #8a6a1a;
+    --red: #c0392b;
+    --red-bright: #e74c3c;
+    --ink: #0a0a0f;
+    --paper: #0f0e12;
+    --panel: rgba(15,14,18,0.92);
+    --border: rgba(200,168,75,0.35);
+    --glow: rgba(200,168,75,0.15);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--ink);
+    color: var(--gold);
+    font-family: 'Noto Serif TC', serif;
+    height: 100dvh;
+    width: 100vw;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    user-select: none;
+  }
+
+  /* ── Background texture ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 50% 0%, rgba(200,168,75,0.07) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 80% at 100% 100%, rgba(192,57,43,0.06) 0%, transparent 60%),
+      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(200,168,75,0.025) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(200,168,75,0.025) 40px);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ══════════════════════════════
+     TOP BAR
+  ══════════════════════════════ */
+  #topbar {
+    position: relative; z-index: 10;
+    width: 100%; padding: 12px 20px 8px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(10,10,15,0.98) 0%, transparent 100%);
+  }
+  #topbar h1 {
+    font-size: 18px; letter-spacing: 0.18em;
+    background: linear-gradient(135deg, var(--gold-light), var(--gold), var(--gold-dark));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    font-weight: 900;
+  }
+  #topbar .subtitle {
+    font-size: 10px; letter-spacing: 0.3em;
+    color: rgba(200,168,75,0.5); margin-top: 1px;
+  }
+  #location-info {
+    text-align: right; font-size: 10px;
+    color: rgba(200,168,75,0.6); line-height: 1.6;
+    letter-spacing: 0.05em;
+  }
+
+  /* ══════════════════════════════
+     MAIN LAYOUT
+  ══════════════════════════════ */
+  #main {
+    position: relative; z-index: 5;
+    flex: 1; width: 100%;
+    display: flex; flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  /* ══════════════════════════════
+     CAMERA VIEW
+  ══════════════════════════════ */
+  #camera-container {
+    position: relative;
+    width: 100%;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  #video {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  #photo-canvas {
+    display: none;
+  }
+
+  /* Camera overlay decorations */
+  #camera-overlay {
+    position: absolute; inset: 0;
+    pointer-events: none;
+  }
+
+  /* Corner brackets */
+  .bracket {
+    position: absolute;
+    width: 32px; height: 32px;
+    border-color: var(--gold);
+    border-style: solid;
+    opacity: 0.7;
+  }
+  .bracket.tl { top: 16px; left: 16px; border-width: 2px 0 0 2px; }
+  .bracket.tr { top: 16px; right: 16px; border-width: 2px 2px 0 0; }
+  .bracket.bl { bottom: 16px; left: 16px; border-width: 0 0 2px 2px; }
+  .bracket.br { bottom: 16px; right: 16px; border-width: 0 2px 2px 0; }
+
+  /* Crosshair */
+  #crosshair {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 40px; height: 40px;
+  }
+  #crosshair::before, #crosshair::after {
+    content: ''; position: absolute;
+    background: rgba(200,168,75,0.6);
+  }
+  #crosshair::before { width: 1px; height: 100%; left: 50%; top: 0; }
+  #crosshair::after  { height: 1px; width: 100%; top: 50%; left: 0; }
+
+  /* Cardinal direction overlays in viewfinder */
+  .dir-label {
+    position: absolute;
+    font-size: 13px; font-weight: 900;
+    color: rgba(200,168,75,0.85);
+    letter-spacing: 0.1em;
+    text-shadow: 0 0 8px rgba(200,168,75,0.5), 0 1px 3px rgba(0,0,0,0.8);
+  }
+  #dir-N { top: 24px; left: 50%; transform: translateX(-50%); color: var(--red-bright); text-shadow: 0 0 10px rgba(231,76,60,0.7); }
+  #dir-S { bottom: 24px; left: 50%; transform: translateX(-50%); }
+  #dir-W { left: 24px; top: 50%; transform: translateY(-50%); }
+  #dir-E { right: 24px; top: 50%; transform: translateY(-50%); }
+
+  /* Degree tape on top of viewfinder */
+  #degree-tape {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 40px; overflow: hidden;
+    background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 100%);
+  }
+  #tape-canvas { width: 100%; height: 40px; }
+
+  /* ══════════════════════════════
+     BOTTOM COMPASS PANEL
+  ══════════════════════════════ */
+  #compass-panel {
+    position: relative; z-index: 10;
+    width: 100%;
+    background: linear-gradient(180deg, rgba(10,10,15,0.97) 0%, rgba(5,5,8,1) 100%);
+    border-top: 1px solid var(--border);
+    padding: 10px 16px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* ── Compass Rose ── */
+  #compass-wrapper {
+    position: relative;
+    width: 110px; height: 110px;
+    flex-shrink: 0;
+  }
+
+  #compass-rose {
+    width: 110px; height: 110px;
+  }
+
+  /* ── Info panel ── */
+  #info-panel {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 10px;
+  }
+
+  .info-box {
+    background: rgba(200,168,75,0.05);
+    border: 1px solid rgba(200,168,75,0.2);
+    border-radius: 4px;
+    padding: 6px 10px;
+    display: flex; flex-direction: column;
+  }
+  .info-label {
+    font-size: 9px; letter-spacing: 0.2em;
+    color: rgba(200,168,75,0.5);
+    text-transform: uppercase;
+  }
+  .info-value {
+    font-size: 18px; font-weight: 900;
+    color: var(--gold-light);
+    line-height: 1.2;
+    letter-spacing: 0.05em;
+  }
+  .info-value.small { font-size: 14px; }
+  .info-sub {
+    font-size: 10px;
+    color: var(--gold);
+    opacity: 0.7;
+    letter-spacing: 0.1em;
+  }
+  #bearing-value { color: var(--red-bright); }
+
+  /* ── Shutter button ── */
+  #shutter-ring {
+    width: 68px; height: 68px;
+    flex-shrink: 0;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  #shutter-btn {
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    border: 2px solid var(--gold);
+    background: radial-gradient(circle at 35% 35%, rgba(200,168,75,0.25), rgba(200,168,75,0.05));
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s ease;
+    position: relative;
+    box-shadow: 0 0 20px rgba(200,168,75,0.2), inset 0 0 12px rgba(200,168,75,0.05);
+  }
+  #shutter-btn::after {
+    content: '';
+    width: 48px; height: 48px;
+    border-radius: 50%;
+    border: 1px solid rgba(200,168,75,0.4);
+    position: absolute;
+  }
+  #shutter-btn:active {
+    transform: scale(0.9);
+    background: radial-gradient(circle at 35% 35%, rgba(200,168,75,0.6), rgba(200,168,75,0.15));
+    box-shadow: 0 0 30px rgba(200,168,75,0.5);
+  }
+  #shutter-icon {
+    font-size: 22px; opacity: 0.9;
+  }
+
+  /* ══════════════════════════════
+     PHOTO GALLERY PANEL
+  ══════════════════════════════ */
+  #gallery-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: 90px;
+    background: linear-gradient(0deg, rgba(5,5,8,0.98) 80%, transparent 100%);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    gap: 8px;
+    overflow-x: auto;
+    z-index: 20;
+    transform: translateY(100%);
+    transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+  }
+  #gallery-bar.open { transform: translateY(0); }
+  #gallery-bar::-webkit-scrollbar { height: 3px; }
+  #gallery-bar::-webkit-scrollbar-track { background: transparent; }
+  #gallery-bar::-webkit-scrollbar-thumb { background: var(--gold-dark); border-radius: 2px; }
+
+  .gallery-thumb {
+    position: relative;
+    flex-shrink: 0;
+    width: 65px; height: 65px;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .gallery-thumb img {
+    width: 100%; height: 100%; object-fit: cover;
+  }
+  .gallery-thumb .thumb-badge {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: rgba(0,0,0,0.72);
+    font-size: 8px; color: var(--gold); text-align: center;
+    padding: 1px 2px; letter-spacing: 0.05em;
+  }
+  .gallery-thumb .del-btn {
+    position: absolute; top: 2px; right: 2px;
+    width: 16px; height: 16px;
+    background: rgba(192,57,43,0.85);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; color: #fff; cursor: pointer;
+    opacity: 0; transition: opacity 0.2s;
+  }
+  .gallery-thumb:hover .del-btn { opacity: 1; }
+
+  /* Toggle gallery button */
+  #gallery-toggle {
+    position: fixed;
+    bottom: 10px; right: 16px;
+    z-index: 25;
+    background: rgba(10,10,15,0.9);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 12px 5px 8px;
+    color: var(--gold);
+    font-size: 11px; font-family: inherit;
+    cursor: pointer; display: flex; align-items: center; gap: 5px;
+    transition: all 0.2s;
+    letter-spacing: 0.08em;
+  }
+  #gallery-toggle:active { transform: scale(0.95); }
+  #gallery-count {
+    background: var(--red); color: #fff;
+    border-radius: 10px; padding: 1px 6px; font-size: 9px;
+    min-width: 18px; text-align: center;
+  }
+
+  /* ══════════════════════════════
+     PHOTO PREVIEW MODAL
+  ══════════════════════════════ */
+  #preview-modal {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.92);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  #preview-modal.open { opacity: 1; pointer-events: all; }
+
+  #preview-img-wrap {
+    position: relative;
+    max-width: 90vw; max-height: 60vh;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 0 60px rgba(200,168,75,0.15);
+  }
+  #preview-img { max-width: 90vw; max-height: 60vh; display: block; }
+
+  /* Stamp overlay on preview */
+  #preview-stamp {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, transparent 100%);
+    padding: 10px 14px 8px;
+    display: flex; align-items: flex-end; justify-content: space-between;
+  }
+  #preview-stamp .stamp-left { line-height: 1.5; }
+  #preview-stamp .stamp-dir {
+    font-size: 28px; font-weight: 900;
+    color: var(--red-bright);
+    text-shadow: 0 0 15px rgba(231,76,60,0.7);
+    letter-spacing: 0.05em;
+  }
+  #preview-stamp .stamp-deg {
+    font-size: 13px; color: var(--gold);
+    letter-spacing: 0.1em;
+  }
+  #preview-stamp .stamp-info {
+    text-align: right; font-size: 10px;
+    color: rgba(200,168,75,0.7);
+    line-height: 1.6; letter-spacing: 0.05em;
+  }
+
+  #preview-actions {
+    display: flex; gap: 12px; margin-top: 20px;
+  }
+  .modal-btn {
+    padding: 10px 24px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: rgba(200,168,75,0.07);
+    color: var(--gold);
+    font-family: inherit; font-size: 13px;
+    letter-spacing: 0.12em;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .modal-btn:hover { background: rgba(200,168,75,0.15); }
+  .modal-btn.primary {
+    background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+    color: var(--ink); border-color: var(--gold); font-weight: 700;
+  }
+  .modal-btn.danger { border-color: rgba(192,57,43,0.5); color: var(--red-bright); }
+  .modal-btn:active { transform: scale(0.96); }
+
+  /* ══════════════════════════════
+     FLASH
+  ══════════════════════════════ */
+  #flash {
+    position: fixed; inset: 0; z-index: 200;
+    background: white; opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.05s;
+  }
+
+  /* ══════════════════════════════
+     PERMISSION SCREEN
+  ══════════════════════════════ */
+  #permission-screen {
+    position: fixed; inset: 0; z-index: 300;
+    background: var(--ink);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 20px; padding: 32px 28px;
+    overflow-y: auto;
+  }
+  #permission-screen .perm-icon { font-size: 56px; }
+  #permission-screen h2 {
+    font-size: 20px; letter-spacing: 0.2em;
+    color: var(--gold-light); text-align: center;
+  }
+  #permission-screen .perm-desc {
+    font-size: 13px; color: rgba(200,168,75,0.65);
+    text-align: center; line-height: 1.9; letter-spacing: 0.05em;
+  }
+  #start-btn {
+    padding: 14px 36px;
+    background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+    color: var(--ink); border: none; border-radius: 4px;
+    font-family: inherit; font-size: 15px;
+    font-weight: 700; letter-spacing: 0.2em;
+    cursor: pointer; transition: all 0.2s;
+    box-shadow: 0 0 30px rgba(200,168,75,0.3);
+  }
+  #start-btn:active { transform: scale(0.96); }
+
+  /* Instructions box */
+  #how-to-open {
+    display: none;
+    width: 100%;
+    background: rgba(200,168,75,0.05);
+    border: 1px solid rgba(200,168,75,0.25);
+    border-radius: 8px;
+    padding: 16px 18px;
+    gap: 10px;
+    flex-direction: column;
+  }
+  #how-to-open .how-title {
+    font-size: 12px; font-weight: 700;
+    letter-spacing: 0.2em; color: var(--gold);
+    text-align: center;
+  }
+  .how-step {
+    display: flex; align-items: flex-start; gap: 10px;
+    font-size: 12px; color: rgba(200,168,75,0.7);
+    line-height: 1.7; letter-spacing: 0.04em;
+  }
+  .how-step .step-num {
+    background: rgba(200,168,75,0.2);
+    border-radius: 50%; width: 20px; height: 20px;
+    min-width: 20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: var(--gold);
+  }
+  #perm-error {
+    color: var(--red-bright); font-size: 12px;
+    text-align: center; display: none;
+    line-height: 1.6;
+  }
+
+  /* ══════════════════════════════
+     No compass
+  ══════════════════════════════ */
+  #no-compass-msg {
+    position: absolute; bottom: 8px; left: 0; right: 0;
+    text-align: center; font-size: 10px;
+    color: rgba(200,168,75,0.4); letter-spacing: 0.1em;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<!-- Permission Screen -->
+<div id="permission-screen">
+  <div class="perm-icon">🧭</div>
+  <h2>拍照羅盤</h2>
+  <p class="perm-desc">需要開啟相機與方位感測器<br>才能使用拍照羅盤功能</p>
+  <button id="start-btn" onclick="startApp()">啟　動</button>
+  <div id="perm-error"></div>
+
+  <!-- Step-by-step guide, shown after error -->
+  <div id="how-to-open">
+    <div class="how-title">📲 如何正確開啟</div>
+    <div class="how-step">
+      <div class="step-num">1</div>
+      <div>點下方「下載」按鈕，將 <strong>photo-compass.html</strong> 儲存到手機</div>
+    </div>
+    <div class="how-step">
+      <div class="step-num">2</div>
+      <div>開啟「<strong>檔案 App</strong>」→ 找到下載的 HTML 檔案</div>
+    </div>
+    <div class="how-step">
+      <div class="step-num">3</div>
+      <div>點選檔案，它會在 <strong>Safari</strong> 中開啟</div>
+    </div>
+    <div class="how-step">
+      <div class="step-num">4</div>
+      <div>Safari 會詢問相機與感測器權限，點「<strong>允許</strong>」即可</div>
+    </div>
+    <div class="how-step" style="margin-top:4px; padding-top:10px; border-top:1px solid rgba(200,168,75,0.15);">
+      <div class="step-num">⚠</div>
+      <div style="color:rgba(200,168,75,0.5); font-size:11px;">在 Claude.ai 預覽框架內，瀏覽器安全政策不允許存取相機與感測器，須下載後用 Safari 直接開啟。</div>
+    </div>
+  </div>
+</div>
+
+<!-- Flash effect -->
+<div id="flash"></div>
+
+<!-- Top Bar -->
+<div id="topbar">
+  <div>
+    <div class="subtitle">PHOTO COMPASS</div>
+    <h1>拍照羅盤</h1>
+  </div>
+  <div id="location-info">
+    <div id="gps-coords">定位中…</div>
+    <div id="gps-alt">—</div>
+    <div id="time-display">—</div>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <!-- Camera -->
+  <div id="camera-container">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="photo-canvas"></canvas>
+
+    <!-- Degree Tape -->
+    <div id="degree-tape">
+      <canvas id="tape-canvas"></canvas>
+    </div>
+
+    <!-- Overlay -->
+    <div id="camera-overlay">
+      <div class="bracket tl"></div>
+      <div class="bracket tr"></div>
+      <div class="bracket bl"></div>
+      <div class="bracket br"></div>
+      <div id="crosshair"></div>
+      <div class="dir-label" id="dir-N">北</div>
+      <div class="dir-label" id="dir-S">南</div>
+      <div class="dir-label" id="dir-W">西</div>
+      <div class="dir-label" id="dir-E">東</div>
+    </div>
+  </div>
+
+  <!-- Compass Panel -->
+  <div id="compass-panel">
+    <div id="compass-wrapper">
+      <canvas id="compass-rose" width="110" height="110"></canvas>
+    </div>
+
+    <div id="info-panel">
+      <div class="info-box">
+        <div class="info-label">方位角</div>
+        <div class="info-value" id="bearing-value">—°</div>
+      </div>
+      <div class="info-box">
+        <div class="info-label">方向</div>
+        <div class="info-value small" id="dir-zh">—</div>
+        <div class="info-sub" id="dir-en">—</div>
+      </div>
+      <div class="info-box">
+        <div class="info-label">精度</div>
+        <div class="info-value small" id="accuracy-value">—</div>
+      </div>
+      <div class="info-box">
+        <div class="info-label">已拍攝</div>
+        <div class="info-value small" id="photo-count-val">0</div>
+        <div class="info-sub">張</div>
+      </div>
+    </div>
+
+    <div id="shutter-ring">
+      <button id="shutter-btn" onclick="capturePhoto()">
+        <span id="shutter-icon">⊙</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Gallery toggle -->
+<button id="gallery-toggle" onclick="toggleGallery()">
+  <span>📷</span> 相片庫 <span id="gallery-count">0</span>
+</button>
+
+<!-- Gallery Bar -->
+<div id="gallery-bar"></div>
+
+<!-- Preview Modal -->
+<div id="preview-modal">
+  <div id="preview-img-wrap">
+    <img id="preview-img" src="" alt="">
+    <div id="preview-stamp">
+      <div class="stamp-left">
+        <div class="stamp-dir" id="stamp-dir">—</div>
+        <div class="stamp-deg" id="stamp-deg">—°</div>
+      </div>
+      <div class="stamp-info" id="stamp-info"></div>
+    </div>
+  </div>
+  <div id="preview-actions">
+    <button class="modal-btn danger" onclick="deleteCurrentPhoto()">刪除</button>
+    <button class="modal-btn" onclick="closePreview()">關閉</button>
+    <button class="modal-btn primary" onclick="downloadCurrentPhoto()">儲存</button>
+  </div>
+</div>
+
+<div id="no-compass-msg">此裝置未偵測到方向感測器</div>
+
+<script>
+// ════════════════════════════════════════════
+// State
+// ════════════════════════════════════════════
+let heading = 0;          // degrees, 0=North
+let headingSmooth = 0;
+let stream = null;
+let photos = [];          // {dataUrl, heading, dir, lat, lon, time}
+let currentPreviewIdx = -1;
+let galleryOpen = false;
+let locationData = null;
+let animFrameId = null;
+let permissionGranted = false;
+let compassAvail = false;
+
+const DIR8 = [
+  { zh:'北', en:'N',  min:337.5, max:360 },
+  { zh:'北', en:'N',  min:0,     max:22.5 },
+  { zh:'東北',en:'NE', min:22.5, max:67.5 },
+  { zh:'東', en:'E',  min:67.5, max:112.5 },
+  { zh:'東南',en:'SE', min:112.5,max:157.5 },
+  { zh:'南', en:'S',  min:157.5,max:202.5 },
+  { zh:'西南',en:'SW', min:202.5,max:247.5 },
+  { zh:'西', en:'W',  min:247.5,max:292.5 },
+  { zh:'西北',en:'NW', min:292.5,max:337.5 },
+];
+
+function getDir(h) {
+  const d = ((h % 360) + 360) % 360;
+  for (const dir of DIR8) {
+    if (d >= dir.min && d < dir.max) return dir;
+  }
+  return DIR8[0];
+}
+
+// ════════════════════════════════════════════
+// Init
+// ════════════════════════════════════════════
+async function startApp() {
+  const btn = document.getElementById('start-btn');
+  btn.textContent = '啟動中…'; btn.disabled = true;
+  document.getElementById('perm-error').style.display = 'none';
+
+  let cameraOk = false;
+  let compassOk = false;
+
+  // Try camera
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    });
+    document.getElementById('video').srcObject = stream;
+    cameraOk = true;
+  } catch(e) {
+    console.warn('Camera failed:', e.name, e.message);
+  }
+
+  // Try compass
+  try {
+    await initCompass();
+    compassOk = true;
+  } catch(e) {
+    console.warn('Compass failed:', e.name, e.message);
+  }
+
+  // GPS (best-effort, no block)
+  initGPS();
+  setInterval(updateClock, 1000); updateClock();
+
+  if (cameraOk || compassOk) {
+    // At least one works — proceed
+    document.getElementById('permission-screen').style.display = 'none';
+    permissionGranted = true;
+    if (!cameraOk) {
+      // Show placeholder in video area
+      document.getElementById('video').style.display = 'none';
+      const camCont = document.getElementById('camera-container');
+      camCont.style.background = 'radial-gradient(ellipse at center, #1a1810 0%, #0a0a0f 100%)';
+      const msg = document.createElement('div');
+      msg.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(200,168,75,0.4);font-size:13px;letter-spacing:0.15em;text-align:center;';
+      msg.textContent = '相機不可用\n羅盤功能仍正常運作';
+      camCont.appendChild(msg);
+    }
+    startRenderLoop();
+  } else {
+    // Both failed — show instructions
+    const errEl = document.getElementById('perm-error');
+    errEl.style.display = 'block';
+    errEl.innerHTML = '⚠ 無法取得相機或感測器權限';
+    document.getElementById('how-to-open').style.display = 'flex';
+    btn.textContent = '重試'; btn.disabled = false;
+  }
+}
+
+// ════════════════════════════════════════════
+// Compass
+// ════════════════════════════════════════════
+async function initCompass() {
+  // iOS 13+ needs requestPermission
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    const perm = await DeviceOrientationEvent.requestPermission();
+    if (perm !== 'granted') throw new Error('Orientation denied');
+  }
+
+  window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+  window.addEventListener('deviceorientation', handleOrientation, true);
+}
+
+function handleOrientation(e) {
+  let h = null;
+  if (e.webkitCompassHeading != null) {
+    h = e.webkitCompassHeading; // iOS
+  } else if (e.alpha != null && e.absolute) {
+    h = (360 - e.alpha) % 360;
+  } else if (e.alpha != null) {
+    h = (360 - e.alpha) % 360;
+  }
+  if (h !== null) {
+    compassAvail = true;
+    heading = ((h % 360) + 360) % 360;
+    document.getElementById('no-compass-msg').style.display = 'none';
+  }
+}
+
+// ════════════════════════════════════════════
+// GPS
+// ════════════════════════════════════════════
+function initGPS() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.watchPosition(pos => {
+    locationData = pos.coords;
+    const lat = pos.coords.latitude.toFixed(5);
+    const lon = pos.coords.longitude.toFixed(5);
+    const acc = Math.round(pos.coords.accuracy);
+    document.getElementById('gps-coords').textContent = `${lat}° N  ${lon}° E`;
+    document.getElementById('gps-alt').textContent =
+      pos.coords.altitude ? `海拔 ${Math.round(pos.coords.altitude)} m` : `精度 ±${acc}m`;
+    document.getElementById('accuracy-value').textContent = `±${acc}m`;
+  }, () => {
+    document.getElementById('gps-coords').textContent = 'GPS 不可用';
+  }, { enableHighAccuracy: true });
+}
+
+function updateClock() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  const s = String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('time-display').textContent = `${h}:${m}:${s}`;
+}
+
+// ════════════════════════════════════════════
+// Render Loop
+// ════════════════════════════════════════════
+function startRenderLoop() {
+  function loop() {
+    // Smooth heading
+    let diff = heading - headingSmooth;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    headingSmooth += diff * 0.12;
+    headingSmooth = ((headingSmooth % 360) + 360) % 360;
+
+    updateCompassRose(headingSmooth);
+    updateTape(headingSmooth);
+    updateDirectionOverlays(headingSmooth);
+    updateInfoPanel(headingSmooth);
+
+    animFrameId = requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+// ════════════════════════════════════════════
+// Compass Rose Canvas
+// ════════════════════════════════════════════
+function updateCompassRose(h) {
+  const canvas = document.getElementById('compass-rose');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W/2, cy = H/2, r = W/2 - 6;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Outer ring glow
+  ctx.save();
+  const grd = ctx.createRadialGradient(cx, cy, r-8, cx, cy, r+4);
+  grd.addColorStop(0, 'rgba(200,168,75,0.15)');
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath(); ctx.arc(cx, cy, r+4, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  // Outer ring
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(200,168,75,0.5)';
+  ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.restore();
+
+  // Inner ring
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.72, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(200,168,75,0.2)';
+  ctx.lineWidth = 1; ctx.stroke();
+  ctx.restore();
+
+  // Tick marks (rotate with compass)
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-h * Math.PI / 180);
+  for (let i = 0; i < 360; i += 5) {
+    const rad = i * Math.PI / 180;
+    const isMajor = i % 45 === 0;
+    const isMid   = i % 15 === 0;
+    const len = isMajor ? 10 : isMid ? 7 : 4;
+    const x1 = Math.sin(rad) * (r - 2);
+    const y1 = -Math.cos(rad) * (r - 2);
+    const x2 = Math.sin(rad) * (r - 2 - len);
+    const y2 = -Math.cos(rad) * (r - 2 - len);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.strokeStyle = isMajor ? 'rgba(200,168,75,0.9)' : isMid ? 'rgba(200,168,75,0.55)' : 'rgba(200,168,75,0.25)';
+    ctx.lineWidth = isMajor ? 1.5 : 1;
+    ctx.stroke();
+  }
+
+  // Cardinal labels on rose
+  const cardinals = [
+    { label:'北', angle:0, color:'#e74c3c' },
+    { label:'東', angle:90, color:'rgba(200,168,75,0.9)' },
+    { label:'南', angle:180, color:'rgba(200,168,75,0.9)' },
+    { label:'西', angle:270, color:'rgba(200,168,75,0.9)' },
+  ];
+  ctx.font = 'bold 11px "Noto Serif TC", serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  cardinals.forEach(c => {
+    const rad = c.angle * Math.PI / 180;
+    const rx = Math.sin(rad) * (r * 0.55);
+    const ry = -Math.cos(rad) * (r * 0.55);
+    ctx.fillStyle = c.color;
+    ctx.fillText(c.label, rx, ry);
+  });
+
+  ctx.restore();
+
+  // North needle (fixed, pointing up)
+  ctx.save();
+  ctx.translate(cx, cy);
+  // Red north
+  ctx.beginPath();
+  ctx.moveTo(0, -r * 0.62);
+  ctx.lineTo(5, 0);
+  ctx.lineTo(-5, 0);
+  ctx.closePath();
+  ctx.fillStyle = '#e74c3c';
+  ctx.shadowColor = 'rgba(231,76,60,0.6)';
+  ctx.shadowBlur = 8;
+  ctx.fill();
+  // White south
+  ctx.beginPath();
+  ctx.moveTo(0, r * 0.62);
+  ctx.lineTo(5, 0);
+  ctx.lineTo(-5, 0);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(200,168,75,0.4)';
+  ctx.shadowBlur = 0;
+  ctx.fill();
+  // Center dot
+  ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI*2);
+  ctx.fillStyle = '#c8a84b';
+  ctx.shadowColor = 'rgba(200,168,75,0.8)'; ctx.shadowBlur = 6;
+  ctx.fill();
+  ctx.restore();
+}
+
+// ════════════════════════════════════════════
+// Degree Tape
+// ════════════════════════════════════════════
+function updateTape(h) {
+  const canvas = document.getElementById('tape-canvas');
+  const W = canvas.parentElement.offsetWidth;
+  canvas.width = W; canvas.height = 40;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, 40);
+
+  const degPerPx = 0.25; // degrees per pixel
+  const halfW = W / 2;
+
+  // Background
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(0, 0, W, 40);
+
+  // Draw ticks
+  const startDeg = h - halfW * degPerPx;
+  const endDeg   = h + halfW * degPerPx;
+
+  ctx.save();
+  for (let d = Math.floor(startDeg / 5) * 5; d <= endDeg; d += 5) {
+    const x = halfW + (d - h) / degPerPx;
+    const isMajor = d % 45 === 0;
+    const isMid   = d % 15 === 0;
+    const tickH = isMajor ? 16 : isMid ? 10 : 5;
+    const dd = ((d % 360) + 360) % 360;
+
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, tickH);
+    ctx.strokeStyle = isMajor ? 'rgba(200,168,75,0.9)' : 'rgba(200,168,75,0.35)';
+    ctx.lineWidth = isMajor ? 1.5 : 1;
+    ctx.stroke();
+
+    if (isMajor) {
+      const cardMap = {0:'N',45:'NE',90:'E',135:'SE',180:'S',225:'SW',270:'W',315:'NW'};
+      const lbl = cardMap[dd] || `${dd}°`;
+      ctx.fillStyle = dd === 0 || dd === 360 ? '#e74c3c' : 'rgba(200,168,75,0.8)';
+      ctx.font = `bold 9px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(lbl, x, 30);
+    } else if (isMid && !isMajor) {
+      ctx.fillStyle = 'rgba(200,168,75,0.45)';
+      ctx.font = `8px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(`${((dd % 360)+360)%360}`, x, 28);
+    }
+  }
+  ctx.restore();
+
+  // Center indicator
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(halfW, 0);
+  ctx.lineTo(halfW - 5, 10);
+  ctx.lineTo(halfW + 5, 10);
+  ctx.closePath();
+  ctx.fillStyle = '#e74c3c';
+  ctx.fill();
+  ctx.restore();
+}
+
+// ════════════════════════════════════════════
+// Direction Labels in Viewfinder
+// ════════════════════════════════════════════
+function updateDirectionOverlays(h) {
+  // Position cardinal labels relative to camera view
+  // N label: offset based on heading
+  const container = document.getElementById('camera-container');
+  const W = container.offsetWidth, H = container.offsetHeight;
+  const cx = W/2, cy = H/2;
+  const spread = Math.min(W, H) * 0.38;
+
+  const dirs = [
+    { id:'dir-N', angle: 0 - h },
+    { id:'dir-E', angle: 90 - h },
+    { id:'dir-S', angle: 180 - h },
+    { id:'dir-W', angle: 270 - h },
+  ];
+
+  dirs.forEach(d => {
+    const el = document.getElementById(d.id);
+    const rad = d.angle * Math.PI / 180;
+    let x = cx + Math.sin(rad) * spread;
+    let y = cy - Math.cos(rad) * spread;
+    // Clamp to visible area
+    x = Math.max(20, Math.min(W - 20, x));
+    y = Math.max(20, Math.min(H - 20, y));
+    el.style.left = x + 'px';
+    el.style.top  = y + 'px';
+    el.style.transform = 'translate(-50%, -50%)';
+    // Opacity based on how close to edge of view
+    const dist = Math.sqrt((x - cx)**2 + (y - cy)**2);
+    el.style.opacity = Math.min(1, dist / (spread * 0.5));
+  });
+}
+
+// ════════════════════════════════════════════
+// Info Panel
+// ════════════════════════════════════════════
+function updateInfoPanel(h) {
+  const deg = Math.round(((h % 360) + 360) % 360);
+  const dir = getDir(deg);
+  document.getElementById('bearing-value').textContent = `${deg}°`;
+  document.getElementById('dir-zh').textContent = dir.zh;
+  document.getElementById('dir-en').textContent = dir.en;
+}
+
+// ════════════════════════════════════════════
+// Capture Photo
+// ════════════════════════════════════════════
+function capturePhoto() {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('photo-canvas');
+
+  // Flash
+  const flash = document.getElementById('flash');
+  flash.style.opacity = '1';
+  setTimeout(() => { flash.style.opacity = '0'; }, 80);
+
+  canvas.width  = video.videoWidth  || 1280;
+  canvas.height = video.videoHeight || 720;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  const deg = Math.round(((heading % 360) + 360) % 360);
+  const dir = getDir(deg);
+  const now = new Date();
+  const timeStr = now.toLocaleString('zh-TW', { hour12: false });
+
+  // Stamp on image
+  drawStamp(ctx, canvas.width, canvas.height, deg, dir, timeStr);
+
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+  const photo = {
+    dataUrl, heading: deg, dir,
+    lat: locationData ? locationData.latitude.toFixed(5) : null,
+    lon: locationData ? locationData.longitude.toFixed(5) : null,
+    time: timeStr,
+  };
+  photos.unshift(photo);
+  updateGallery();
+  updatePhotoCount();
+}
+
+function drawStamp(ctx, W, H, deg, dir, timeStr) {
+  // Gradient bar at bottom
+  const grad = ctx.createLinearGradient(0, H * 0.72, 0, H);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.78)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, H * 0.72, W, H * 0.28);
+
+  // Direction
+  ctx.save();
+  ctx.fillStyle = '#e74c3c';
+  ctx.font = `bold ${H * 0.072}px "Noto Serif TC", serif`;
+  ctx.textAlign = 'left';
+  ctx.shadowColor = 'rgba(231,76,60,0.5)'; ctx.shadowBlur = 12;
+  ctx.fillText(`${dir.zh}  ${deg}°`, W * 0.04, H * 0.93);
+
+  // Info
+  ctx.fillStyle = 'rgba(200,168,75,0.85)';
+  ctx.font = `${H * 0.028}px "Noto Serif TC", serif`;
+  ctx.shadowBlur = 6; ctx.shadowColor = 'rgba(200,168,75,0.4)';
+  ctx.textAlign = 'right';
+  const locStr = (photos[0]?.lat) ? `${photos[0].lat}°N  ${photos[0].lon}°E` : '';
+  ctx.fillText(timeStr, W * 0.97, H * 0.91);
+  if (locStr) ctx.fillText(locStr, W * 0.97, H * 0.96);
+
+  // Small compass rose stamp
+  drawMiniCompass(ctx, W * 0.06, H * 0.06, H * 0.048, deg);
+  ctx.restore();
+}
+
+function drawMiniCompass(ctx, cx, cy, r, heading) {
+  ctx.save();
+  ctx.globalAlpha = 0.8;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(200,168,75,0.7)'; ctx.lineWidth = 1; ctx.stroke();
+
+  // Needle
+  const rad = -heading * Math.PI / 180;
+  ctx.translate(cx, cy); ctx.rotate(rad);
+  ctx.beginPath(); ctx.moveTo(0, -r*0.7); ctx.lineTo(2.5, 0); ctx.lineTo(-2.5, 0);
+  ctx.closePath(); ctx.fillStyle = '#e74c3c'; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0, r*0.7);  ctx.lineTo(2.5, 0); ctx.lineTo(-2.5, 0);
+  ctx.closePath(); ctx.fillStyle = 'rgba(200,168,75,0.6)'; ctx.fill();
+  ctx.restore();
+}
+
+// ════════════════════════════════════════════
+// Gallery
+// ════════════════════════════════════════════
+function updateGallery() {
+  const bar = document.getElementById('gallery-bar');
+  bar.innerHTML = '';
+  photos.forEach((p, i) => {
+    const thumb = document.createElement('div');
+    thumb.className = 'gallery-thumb';
+    thumb.innerHTML = `
+      <img src="${p.dataUrl}" alt="">
+      <div class="thumb-badge">${p.dir.zh} ${p.heading}°</div>
+      <div class="del-btn" onclick="deletePhoto(${i},event)">✕</div>
+    `;
+    thumb.addEventListener('click', () => openPreview(i));
+    bar.appendChild(thumb);
+  });
+  document.getElementById('gallery-count').textContent = photos.length;
+}
+
+function updatePhotoCount() {
+  document.getElementById('photo-count-val').textContent = photos.length;
+}
+
+function toggleGallery() {
+  galleryOpen = !galleryOpen;
+  document.getElementById('gallery-bar').classList.toggle('open', galleryOpen);
+}
+
+function deletePhoto(idx, e) {
+  e.stopPropagation();
+  photos.splice(idx, 1);
+  updateGallery(); updatePhotoCount();
+}
+
+// ════════════════════════════════════════════
+// Preview Modal
+// ════════════════════════════════════════════
+function openPreview(idx) {
+  currentPreviewIdx = idx;
+  const p = photos[idx];
+  document.getElementById('preview-img').src = p.dataUrl;
+  document.getElementById('stamp-dir').textContent = `${p.dir.zh} ${p.dir.en}`;
+  document.getElementById('stamp-deg').textContent = `${p.heading}°`;
+  let info = p.time;
+  if (p.lat) info += `\n${p.lat}°N\n${p.lon}°E`;
+  document.getElementById('stamp-info').textContent = info;
+  document.getElementById('preview-modal').classList.add('open');
+}
+
+function closePreview() {
+  document.getElementById('preview-modal').classList.remove('open');
+  currentPreviewIdx = -1;
+}
+
+function downloadCurrentPhoto() {
+  if (currentPreviewIdx < 0) return;
+  const p = photos[currentPreviewIdx];
+  const a = document.createElement('a');
+  a.href = p.dataUrl;
+  a.download = `compass_${p.dir.en}_${p.heading}deg_${Date.now()}.jpg`;
+  a.click();
+}
+
+function deleteCurrentPhoto() {
+  if (currentPreviewIdx < 0) return;
+  photos.splice(currentPreviewIdx, 1);
+  updateGallery(); updatePhotoCount();
+  closePreview();
+}
+
+// Close modal on backdrop click
+document.getElementById('preview-modal').addEventListener('click', function(e) {
+  if (e.target === this) closePreview();
+});
+
+// ════════════════════════════════════════════
+// Handle resize
+// ════════════════════════════════════════════
+window.addEventListener('resize', () => {
+  // tape redraws on next frame
+});
+</script>
+
+<script>
+if ('serviceWorker' in navigator && !location.hostname.includes('claude')) {
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
