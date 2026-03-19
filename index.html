@@ -629,7 +629,17 @@
   </div>
 </div>
 
-<div id="no-compass-msg">此裝置未偵測到方向感測器</div>
+<!-- Sensor status bar -->
+<div id="sensor-bar" style="display:none; position:fixed; top:60px; left:0; right:0; z-index:50;
+  background:rgba(192,57,43,0.92); color:#fff; font-size:12px; letter-spacing:0.08em;
+  text-align:center; padding:8px 16px; font-family:'Noto Serif TC',serif;">
+  <span id="no-compass-msg">⚠ 感測器未回應，請點此校正</span>
+  <button onclick="recalibrateCompass()" style="margin-left:12px; padding:3px 12px;
+    background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.5);
+    border-radius:10px; color:#fff; font-size:11px; font-family:inherit; cursor:pointer;">
+    重新授權
+  </button>
+</div>
 
 <script>
 // ════════════════════════════════════════════
@@ -730,30 +740,106 @@ async function startApp() {
 // Compass
 // ════════════════════════════════════════════
 async function initCompass() {
-  // iOS 13+ needs requestPermission
+  // iOS 13+ requires explicit permission request triggered by user gesture
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
-    const perm = await DeviceOrientationEvent.requestPermission();
+    let perm;
+    try {
+      perm = await DeviceOrientationEvent.requestPermission();
+    } catch(e) {
+      throw new Error('Orientation denied');
+    }
     if (perm !== 'granted') throw new Error('Orientation denied');
   }
 
-  window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-  window.addEventListener('deviceorientation', handleOrientation, true);
+  // Try absolute first (Android), fallback to generic (iOS uses webkit)
+  let gotEvent = false;
+
+  window.addEventListener('deviceorientationabsolute', (e) => {
+    gotEvent = true;
+    handleOrientation(e);
+  }, true);
+
+  window.addEventListener('deviceorientation', (e) => {
+    // Only use generic event if absolute didn't fire
+    handleOrientation(e);
+  }, true);
+
+  // Show sensor status after 2s
+  setTimeout(() => {
+    if (!compassAvail) {
+      document.getElementById('sensor-bar').style.display = 'block';
+      document.getElementById('no-compass-msg').textContent = '⚠ 感測器未回應，請點此校正或重新整理';
+    }
+  }, 2000);
 }
 
+let lastEventTime = 0;
 function handleOrientation(e) {
+  const now = Date.now();
+
   let h = null;
-  if (e.webkitCompassHeading != null) {
-    h = e.webkitCompassHeading; // iOS
-  } else if (e.alpha != null && e.absolute) {
-    h = (360 - e.alpha) % 360;
-  } else if (e.alpha != null) {
-    h = (360 - e.alpha) % 360;
+
+  // iOS: webkitCompassHeading is the most reliable (true north, compensated)
+  if (e.webkitCompassHeading != null && e.webkitCompassHeading >= 0) {
+    h = e.webkitCompassHeading;
   }
-  if (h !== null) {
+  // Android absolute: alpha is clockwise from north when absolute=true
+  else if (e.absolute && e.alpha != null) {
+    h = (360 - e.alpha + 360) % 360;
+  }
+  // Fallback: generic alpha (may not be true north)
+  else if (e.alpha != null) {
+    h = (360 - e.alpha + 360) % 360;
+  }
+
+  if (h !== null && !isNaN(h)) {
     compassAvail = true;
-    heading = ((h % 360) + 360) % 360;
-    document.getElementById('no-compass-msg').style.display = 'none';
+    heading = h;
+    lastEventTime = now;
+
+    // Update accuracy indicator with compass accuracy if available
+    if (e.webkitCompassAccuracy != null && e.webkitCompassAccuracy > 0) {
+      const accEl = document.getElementById('accuracy-value');
+      if (!locationData) {
+        accEl.textContent = `±${Math.round(e.webkitCompassAccuracy)}°`;
+      }
+    }
+
+    // Hide sensor warning bar
+    const bar = document.getElementById('sensor-bar');
+    if (bar.style.display !== 'none') bar.style.display = 'none';
+  }
+}
+
+// Re-request compass permission (for cases where it was denied or timed out)
+async function recalibrateCompass() {
+  compassAvail = false;
+  document.getElementById('no-compass-msg').textContent = '⏳ 重新申請感測器權限…';
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const perm = await DeviceOrientationEvent.requestPermission();
+      if (perm !== 'granted') {
+        document.getElementById('no-compass-msg').textContent = '❌ 權限被拒，請至設定 > Safari > 動態與方向 開啟';
+        return;
+      }
+    }
+    // Re-attach listeners
+    window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
+    window.removeEventListener('deviceorientation', handleOrientation, true);
+    window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+    window.addEventListener('deviceorientation', handleOrientation, true);
+    document.getElementById('no-compass-msg').textContent = '✓ 已重新連線，請轉動手機…';
+    setTimeout(() => {
+      if (!compassAvail) {
+        document.getElementById('no-compass-msg').textContent = '⚠ 仍未偵測，請至設定 > 隱私權 > 動態與健身 確認已開啟';
+      } else {
+        document.getElementById('sensor-bar').style.display = 'none';
+      }
+    }, 3000);
+  } catch(e) {
+    document.getElementById('no-compass-msg').textContent = '❌ 錯誤：' + e.message;
   }
 }
 
@@ -789,12 +875,14 @@ function updateClock() {
 // ════════════════════════════════════════════
 function startRenderLoop() {
   function loop() {
-    // Smooth heading
+    // Smooth heading with shortest-path interpolation
     let diff = heading - headingSmooth;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
-    headingSmooth += diff * 0.12;
-    headingSmooth = ((headingSmooth % 360) + 360) % 360;
+    // Normalise to [-180, 180]
+    while (diff >  180) diff -= 360;
+    while (diff < -180) diff += 360;
+    headingSmooth += diff * 0.15;
+    while (headingSmooth <   0) headingSmooth += 360;
+    while (headingSmooth >= 360) headingSmooth -= 360;
 
     updateCompassRose(headingSmooth);
     updateTape(headingSmooth);
@@ -817,7 +905,7 @@ function updateCompassRose(h) {
 
   ctx.clearRect(0, 0, W, H);
 
-  // Outer ring glow
+  // Glow
   ctx.save();
   const grd = ctx.createRadialGradient(cx, cy, r-8, cx, cy, r+4);
   grd.addColorStop(0, 'rgba(200,168,75,0.15)');
@@ -840,15 +928,14 @@ function updateCompassRose(h) {
   ctx.lineWidth = 1; ctx.stroke();
   ctx.restore();
 
-  // Tick marks (rotate with compass)
+  // ── Fixed tick marks & cardinal labels (do NOT rotate) ──
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(-h * Math.PI / 180);
   for (let i = 0; i < 360; i += 5) {
     const rad = i * Math.PI / 180;
-    const isMajor = i % 45 === 0;
-    const isMid   = i % 15 === 0;
-    const len = isMajor ? 10 : isMid ? 7 : 4;
+    const isMajor = i % 90 === 0;
+    const isMid   = i % 45 === 0;
+    const len = isMajor ? 11 : isMid ? 7 : 4;
     const x1 = Math.sin(rad) * (r - 2);
     const y1 = -Math.cos(rad) * (r - 2);
     const x2 = Math.sin(rad) * (r - 2 - len);
@@ -858,52 +945,61 @@ function updateCompassRose(h) {
     ctx.lineWidth = isMajor ? 1.5 : 1;
     ctx.stroke();
   }
-
-  // Cardinal labels on rose
+  // Fixed cardinal labels: N always at top, E right, S bottom, W left
   const cardinals = [
-    { label:'北', angle:0, color:'#e74c3c' },
-    { label:'東', angle:90, color:'rgba(200,168,75,0.9)' },
-    { label:'南', angle:180, color:'rgba(200,168,75,0.9)' },
-    { label:'西', angle:270, color:'rgba(200,168,75,0.9)' },
+    { label:'N', angle:0,   color:'#e74c3c' },
+    { label:'E', angle:90,  color:'rgba(200,168,75,0.7)' },
+    { label:'S', angle:180, color:'rgba(200,168,75,0.7)' },
+    { label:'W', angle:270, color:'rgba(200,168,75,0.7)' },
   ];
-  ctx.font = 'bold 11px "Noto Serif TC", serif';
+  ctx.font = `bold ${Math.round(r*0.22)}px sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   cardinals.forEach(c => {
     const rad = c.angle * Math.PI / 180;
-    const rx = Math.sin(rad) * (r * 0.55);
-    const ry = -Math.cos(rad) * (r * 0.55);
+    const rx = Math.sin(rad) * (r * 0.58);
+    const ry = -Math.cos(rad) * (r * 0.58);
     ctx.fillStyle = c.color;
     ctx.fillText(c.label, rx, ry);
   });
+  ctx.restore();
+
+  // ── Rotating needle — points to magnetic north ──
+  // heading = direction phone is facing; needle must point opposite = -h
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-h * Math.PI / 180);  // rotate so north end aims at true north
+
+  const nl = r * 0.60;  // needle length
+  const nw = r * 0.10;  // needle half-width
+
+  // Red north tip
+  ctx.beginPath();
+  ctx.moveTo(0, -nl);
+  ctx.lineTo(nw, 0);
+  ctx.lineTo(-nw, 0);
+  ctx.closePath();
+  ctx.fillStyle = '#e74c3c';
+  ctx.shadowColor = 'rgba(231,76,60,0.7)';
+  ctx.shadowBlur = 10;
+  ctx.fill();
+
+  // Gold south tip
+  ctx.beginPath();
+  ctx.moveTo(0, nl * 0.75);
+  ctx.lineTo(nw * 0.7, 0);
+  ctx.lineTo(-nw * 0.7, 0);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(200,168,75,0.55)';
+  ctx.shadowBlur = 0;
+  ctx.fill();
 
   ctx.restore();
 
-  // North needle (fixed, pointing up)
+  // Center dot (always on top)
   ctx.save();
-  ctx.translate(cx, cy);
-  // Red north
-  ctx.beginPath();
-  ctx.moveTo(0, -r * 0.62);
-  ctx.lineTo(5, 0);
-  ctx.lineTo(-5, 0);
-  ctx.closePath();
-  ctx.fillStyle = '#e74c3c';
-  ctx.shadowColor = 'rgba(231,76,60,0.6)';
-  ctx.shadowBlur = 8;
-  ctx.fill();
-  // White south
-  ctx.beginPath();
-  ctx.moveTo(0, r * 0.62);
-  ctx.lineTo(5, 0);
-  ctx.lineTo(-5, 0);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(200,168,75,0.4)';
-  ctx.shadowBlur = 0;
-  ctx.fill();
-  // Center dot
-  ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI*2);
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.10, 0, Math.PI*2);
   ctx.fillStyle = '#c8a84b';
-  ctx.shadowColor = 'rgba(200,168,75,0.8)'; ctx.shadowBlur = 6;
+  ctx.shadowColor = 'rgba(200,168,75,0.9)'; ctx.shadowBlur = 8;
   ctx.fill();
   ctx.restore();
 }
