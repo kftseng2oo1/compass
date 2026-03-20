@@ -985,6 +985,14 @@ let useAbsolute = false;
 function handleOrientation(e) {
   eventCount++;
 
+  // Don't overwrite heading while user is manually dragging
+  if (dragActive) {
+    // Still capture beta/gamma for level bubble
+    if (e.beta  !== null) beta  = e.beta;
+    if (e.gamma !== null) gamma = e.gamma;
+    return;
+  }
+
   // ── Priority 1: iOS webkitCompassHeading
   if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
     heading = (e.webkitCompassHeading + 360) % 360;
@@ -1863,13 +1871,11 @@ roseEl.addEventListener('touchend', () => {
   const wasLongPress = dragActive;
   clearTimeout(longPressTimer);
   if (dragActive) {
-    // End drag mode
-    dragActive = false;
+    dragActive = false;  // sensor resumes immediately on next orientation event
     roseEl.style.outline = '';
     document.getElementById('compass-mode-badge').textContent =
       compassMode === 'dial' ? '轉盤' : '指針';
   } else if (!wasLongPress) {
-    // Short tap → toggle mode
     toggleCompassMode();
   }
 });
