@@ -1428,7 +1428,16 @@ function updateCompassRose(h) {
   ctx.fill();
   ctx.restore();
 
-  // Center dot (always on top)
+  // ── Center: show raw heading for diagnostics ──
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `bold ${Math.round(r*0.28)}px sans-serif`;
+  ctx.fillStyle = compassAvail ? 'rgba(200,168,75,0.9)' : 'rgba(200,168,75,0.25)';
+  ctx.fillText(Math.round(h) + '°', cx, cy);
+  ctx.restore();
+
+  // Center dot on top
   ctx.save();
   ctx.beginPath(); ctx.arc(cx, cy, r * 0.10, 0, Math.PI*2);
   ctx.fillStyle = '#c8a84b';
@@ -1793,6 +1802,57 @@ document.getElementById('preview-modal').addEventListener('click', function(e) {
 if (sessionStorage.getItem('orientationGranted')) {
   startApp();
 }
+
+// ── Touch-drag on compass rose to manually test rotation ──
+// Long-press (500ms) activates manual mode; drag to rotate
+let dragActive = false;
+let dragStartAngle = 0;
+let dragBaseHeading = 0;
+let longPressTimer = null;
+
+function getTouchAngle(e) {
+  const canvas = document.getElementById('compass-rose');
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  const x = t.clientX - rect.left  - rect.width  / 2;
+  const y = t.clientY - rect.top   - rect.height / 2;
+  return Math.atan2(x, -y) * 180 / Math.PI;
+}
+
+const roseEl = document.getElementById('compass-rose');
+
+roseEl.addEventListener('touchstart', e => {
+  const angle = getTouchAngle(e);
+  longPressTimer = setTimeout(() => {
+    dragActive = true;
+    dragStartAngle  = angle;
+    dragBaseHeading = heading;
+    document.getElementById('compass-mode-badge').textContent = '手動';
+    roseEl.style.outline = '2px solid rgba(231,76,60,0.6)';
+    roseEl.style.borderRadius = '50%';
+  }, 500);
+}, { passive: true });
+
+roseEl.addEventListener('touchmove', e => {
+  clearTimeout(longPressTimer);
+  if (!dragActive) return;
+  e.preventDefault();
+  const angle = getTouchAngle(e);
+  let diff = angle - dragStartAngle;
+  while (diff >  180) diff -= 360;
+  while (diff < -180) diff += 360;
+  heading = ((dragBaseHeading + diff) % 360 + 360) % 360;
+}, { passive: false });
+
+roseEl.addEventListener('touchend', () => {
+  clearTimeout(longPressTimer);
+  if (dragActive) {
+    dragActive = false;
+    roseEl.style.outline = '';
+    document.getElementById('compass-mode-badge').textContent =
+      compassMode === 'dial' ? '轉盤' : '指針';
+  }
+});
 
 // ════════════════════════════════════════════
 // Handle resize
