@@ -1428,21 +1428,29 @@ function updateCompassRose(h) {
   ctx.fill();
   ctx.restore();
 
-  // ── Center: show raw heading for diagnostics ──
+  // ── Center dot (small pivot) ──
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r * 0.055, 0, Math.PI*2);
+  ctx.fillStyle = '#c8a84b';
+  ctx.shadowColor = 'rgba(200,168,75,0.9)'; ctx.shadowBlur = 6;
+  ctx.fill();
+  ctx.restore();
+
+  // ── Heading number — drawn below center, outside needle ──
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `bold ${Math.round(r*0.28)}px sans-serif`;
-  ctx.fillStyle = compassAvail ? 'rgba(200,168,75,0.9)' : 'rgba(200,168,75,0.25)';
-  ctx.fillText(Math.round(h) + '°', cx, cy);
-  ctx.restore();
-
-  // Center dot on top
-  ctx.save();
-  ctx.beginPath(); ctx.arc(cx, cy, r * 0.10, 0, Math.PI*2);
-  ctx.fillStyle = '#c8a84b';
-  ctx.shadowColor = 'rgba(200,168,75,0.9)'; ctx.shadowBlur = 8;
+  ctx.font = `bold ${Math.round(r * 0.30)}px sans-serif`;
+  // Semi-transparent background pill for readability
+  const degStr = Math.round(h) + '°';
+  const tw = ctx.measureText(degStr).width;
+  const pillW = tw + 10, pillH = r * 0.36, pillY = cy + r * 0.32;
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath();
+  ctx.roundRect(cx - pillW/2, pillY - pillH/2, pillW, pillH, pillH/2);
   ctx.fill();
+  ctx.fillStyle = compassAvail ? 'rgba(240,208,128,0.95)' : 'rgba(200,168,75,0.3)';
+  ctx.fillText(degStr, cx, pillY);
   ctx.restore();
 }
 
@@ -1827,9 +1835,11 @@ roseEl.addEventListener('touchstart', e => {
     dragActive = true;
     dragStartAngle  = angle;
     dragBaseHeading = heading;
-    document.getElementById('compass-mode-badge').textContent = '手動';
-    roseEl.style.outline = '2px solid rgba(231,76,60,0.6)';
+    document.getElementById('compass-mode-badge').textContent = '✋手動';
+    roseEl.style.outline = '2px solid rgba(231,76,60,0.7)';
     roseEl.style.borderRadius = '50%';
+    // Vibrate if supported
+    if (navigator.vibrate) navigator.vibrate(30);
   }, 500);
 }, { passive: true });
 
