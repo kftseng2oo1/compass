@@ -858,21 +858,29 @@ async function initCompass() {
 let lastEventTime = 0;
 let headingHistory = [];
 let eventCount = 0;
-let useAbsolute = false;   // prefer absolute once confirmed
+let useAbsolute = false;
+let receivedNonZero = false;  // track if we've ever received a real heading
 
 function handleOrientation(e) {
   eventCount++;
 
-  // ── Priority 1: iOS webkitCompassHeading (true north, tilt-compensated)
+  // ── Priority 1: iOS webkitCompassHeading
   if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-    heading = (e.webkitCompassHeading + 360) % 360;
-    compassAvail = true;
+    const raw = e.webkitCompassHeading;
+    // iOS sometimes fires heading=0 for first few events before real data arrives
+    // Accept 0 only after we've seen at least one non-zero value
+    if (raw !== 0 || receivedNonZero) {
+      if (raw !== 0) receivedNonZero = true;
+      heading = (raw + 360) % 360;
+      compassAvail = true;
+    }
   }
   // ── Priority 2: Standard absolute (Android)
   else if (e.absolute === true && e.alpha !== null) {
     heading = (360 - e.alpha + 360) % 360;
     compassAvail = true;
     useAbsolute = true;
+    receivedNonZero = true;
   }
   // ── Priority 3: Generic alpha fallback
   else if (e.alpha !== null && !useAbsolute) {
@@ -1048,17 +1056,20 @@ function updateLevel(b, g) {
   const readout = document.getElementById('tilt-readout');
   if (!bubble) return;
 
-  // Phone held upright for photography: beta ≈ 90°
-  // Offset so bubble is centred when phone is vertical
-  const tiltFB = b - 90;   // front-back deviation from upright
-  const tiltLR = g;         // left-right (gamma is already centred at 0)
+  // Detect shooting posture from beta:
+  //   beta ≈ 0°   → phone flat / overhead (俯拍)
+  //   beta ≈ 90°  → phone upright / portrait (直拍)
+  // We level relative to whichever posture beta is closer to.
+  const isUpright = Math.abs(b) > 45;  // closer to 90 than to 0
+  const betaRef   = isUpright ? 90 : 0;
+  const tiltFB    = b - betaRef;   // front-back deviation from reference
+  const tiltLR    = g;             // left-right always centred at 0
 
-  // Max pixel travel = radius of container - radius of bubble = 36 - 9 = 27px
+  // Max pixel travel inside the 72px circle: radius(36) - bubble(9) = 27px
   const maxPx = 27;
   const clamp = (v, lim) => Math.max(-lim, Math.min(lim, v));
+  const scale = maxPx / 15;  // ±15° maps to ±maxPx
 
-  // Map ±15° → ±maxPx  (beyond 15° the bubble hits the wall)
-  const scale = maxPx / 15;
   const moveX = clamp(tiltLR * scale, maxPx);
   const moveY = clamp(tiltFB * scale, maxPx);
 
@@ -1069,11 +1080,10 @@ function updateLevel(b, g) {
   const isCentred = Math.abs(tiltLR) < 2 && Math.abs(tiltFB) < 2;
   bubble.classList.toggle('centered', isCentred);
 
-  // Tilt readout — only show when sensor active
   if (compassAvail) {
     readout.textContent = isCentred
       ? '水平 ✓'
-      : `${tiltLR >= 0 ? '+' : ''}${tiltLR.toFixed(1)}° ${tiltFB >= 0 ? '+' : ''}${tiltFB.toFixed(1)}°`;
+      : `橫${tiltLR >= 0 ? '+' : ''}${tiltLR.toFixed(1)}° 縱${tiltFB >= 0 ? '+' : ''}${tiltFB.toFixed(1)}°`;
     readout.style.color = isCentred ? 'rgba(231,76,60,0.9)' : 'rgba(200,168,75,0.6)';
   }
 }
@@ -1494,9 +1504,10 @@ document.getElementById('preview-modal').addEventListener('click', function(e) {
   if (e.target === this) closePreview();
 });
 
-// Auto-start after reload (sessionStorage flag set)
+// Auto-start after reload if orientation was already granted
+// (load event has already fired by the time this script runs, call directly)
 if (sessionStorage.getItem('orientationGranted')) {
-  window.addEventListener('load', () => startApp());
+  startApp();
 }
 
 // ════════════════════════════════════════════
