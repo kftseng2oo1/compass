@@ -1627,7 +1627,13 @@ function capturePhoto() {
   const noteSnap = currentNote;
   const streetSnap = streetName;
 
-  drawStamp(ctx, sw, sh, deg, dir, timeStr, posture, noteSnap, streetSnap);
+  // Check if heading is reliable (history spread > 1° means sensor was moving)
+  const hSpread = headingHistory.length >= 5
+    ? Math.max(...headingHistory) - Math.min(...headingHistory)
+    : 999;
+  const headingReliable = compassAvail && hSpread > 1;
+
+  drawStamp(ctx, sw, sh, deg, dir, timeStr, posture, noteSnap, streetSnap, headingReliable);
 
   const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
   const photo = {
@@ -1644,7 +1650,7 @@ function capturePhoto() {
   updatePhotoCount();
 }
 
-function drawStamp(ctx, W, H, deg, dir, timeStr, posture, note, street) {
+function drawStamp(ctx, W, H, deg, dir, timeStr, posture, note, street, reliable) {
   // ── Gradient mask ──
   const grad = ctx.createLinearGradient(0, H * 0.55, 0, H);
   grad.addColorStop(0,   'rgba(0,0,0,0)');
@@ -1680,11 +1686,13 @@ function drawStamp(ctx, W, H, deg, dir, timeStr, posture, note, street) {
   }
 
   // Direction + degree (large, bottom-left)
-  ctx.fillStyle = '#e74c3c';
+  // If heading unreliable, show warning tint
+  ctx.fillStyle = reliable === false ? 'rgba(231,76,60,0.55)' : '#e74c3c';
   ctx.font = `bold ${H * 0.07}px "Noto Serif TC", serif`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(`${dir.zh}  ${deg}°`, W * 0.04, H * 0.91);
+  const dirLabel = reliable === false ? `${dir.zh} ${deg}° ⚠` : `${dir.zh}  ${deg}°`;
+  ctx.fillText(dirLabel, W * 0.04, H * 0.91);
 
   // Posture label next to direction
   ctx.fillStyle = 'rgba(200,168,75,0.65)';
@@ -1784,7 +1792,8 @@ function openPreview(idx) {
   currentPreviewIdx = idx;
   const p = photos[idx];
   document.getElementById('preview-img').src = p.dataUrl;
-  document.getElementById('stamp-dir').textContent = `${p.dir.zh} ${p.dir.en}`;
+  // Show only Chinese direction name (remove English duplicate)
+  document.getElementById('stamp-dir').textContent = p.dir.zh;
   document.getElementById('stamp-deg').textContent = `${p.heading}°`;
   let info = p.time;
   if (p.lat) info += `\n${p.lat}°N\n${p.lon}°E`;
