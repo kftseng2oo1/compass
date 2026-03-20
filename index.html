@@ -217,7 +217,84 @@
     pointer-events: none;
   }
 
-  /* Degree tape on top of viewfinder */
+  /* ── Note input bar ── */
+  #note-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 30;
+    background: linear-gradient(0deg, rgba(5,5,8,0.98) 80%, transparent 100%);
+    border-top: 1px solid var(--border);
+    padding: 10px 14px 16px;
+    display: flex; align-items: center; gap: 10px;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+  }
+  #note-bar.open { transform: translateY(0); }
+
+  #note-label {
+    font-size: 11px; color: rgba(200,168,75,0.55);
+    letter-spacing: 0.15em; white-space: nowrap;
+    flex-shrink: 0;
+  }
+  #note-input {
+    flex: 1;
+    background: rgba(200,168,75,0.07);
+    border: 1px solid rgba(200,168,75,0.3);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: var(--gold-light);
+    font-family: 'Noto Serif TC', serif;
+    font-size: 14px;
+    outline: none;
+    letter-spacing: 0.05em;
+  }
+  #note-input::placeholder { color: rgba(200,168,75,0.3); }
+  #note-input:focus { border-color: rgba(200,168,75,0.6); }
+
+  #note-clear {
+    background: none; border: none;
+    color: rgba(200,168,75,0.4); font-size: 18px;
+    cursor: pointer; padding: 4px; flex-shrink: 0;
+  }
+
+  /* Note toggle button on shutter */
+  #note-toggle {
+    position: absolute;
+    top: -28px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10,10,15,0.92);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 4px 14px;
+    color: rgba(200,168,75,0.6);
+    font-family: inherit; font-size: 10px;
+    letter-spacing: 0.12em; cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  #note-toggle.has-note {
+    color: var(--gold-light);
+    border-color: rgba(200,168,75,0.55);
+    background: rgba(200,168,75,0.1);
+  }
+
+  /* Street name display in viewfinder */
+  #street-overlay {
+    position: absolute;
+    bottom: 12px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.6);
+    border: 1px solid rgba(200,168,75,0.25);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 11px; letter-spacing: 0.08em;
+    color: rgba(200,168,75,0.85);
+    white-space: nowrap;
+    max-width: 80%;
+    overflow: hidden; text-overflow: ellipsis;
+    pointer-events: none;
+    display: none;
+  }
   #degree-tape {
     position: absolute; top: 0; left: 0; right: 0;
     height: 40px; overflow: hidden;
@@ -244,10 +321,42 @@
     position: relative;
     width: 110px; height: 110px;
     flex-shrink: 0;
+    display: flex; flex-direction: column;
+    align-items: center; gap: 5px;
   }
 
   #compass-rose {
     width: 110px; height: 110px;
+  }
+
+  /* Mode toggle button under compass */
+  #compass-mode-btn {
+    width: 100%;
+    padding: 3px 0;
+    background: rgba(200,168,75,0.08);
+    border: 1px solid rgba(200,168,75,0.25);
+    border-radius: 10px;
+    color: rgba(200,168,75,0.7);
+    font-family: 'Noto Serif TC', serif;
+    font-size: 9px; letter-spacing: 0.12em;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+    transition: all 0.2s;
+  }
+  #compass-mode-btn:active { transform: scale(0.95); background: rgba(200,168,75,0.18); }
+  #compass-mode-btn.mode-dial {
+    color: var(--gold-light);
+    border-color: rgba(200,168,75,0.5);
+    background: rgba(200,168,75,0.12);
+  }
+  #compass-mode-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: rgba(200,168,75,0.5);
+    transition: background 0.2s;
+  }
+  #compass-mode-btn.mode-dial #compass-mode-dot {
+    background: var(--red-bright);
+    box-shadow: 0 0 4px rgba(231,76,60,0.7);
   }
 
   /* ── Info panel ── */
@@ -619,6 +728,9 @@
       <div id="tilt-readout">—</div>
     </div>
 
+    <!-- Street name overlay -->
+    <div id="street-overlay">📍 定位中…</div>
+
     <!-- Overlay -->
     <div id="camera-overlay">
       <div class="bracket tl"></div>
@@ -637,6 +749,10 @@
   <div id="compass-panel">
     <div id="compass-wrapper">
       <canvas id="compass-rose" width="110" height="110"></canvas>
+      <button id="compass-mode-btn" onclick="toggleCompassMode()" title="切換羅盤模式">
+        <span id="compass-mode-dot"></span>
+        <span id="compass-mode-label">指針模式</span>
+      </button>
     </div>
 
     <div id="info-panel">
@@ -661,11 +777,21 @@
     </div>
 
     <div id="shutter-ring">
+      <button id="note-toggle" onclick="toggleNoteBar()">✏ 備註</button>
       <button id="shutter-btn" onclick="capturePhoto()">
         <span id="shutter-icon">⊙</span>
       </button>
     </div>
   </div>
+</div>
+
+<!-- Note input bar -->
+<div id="note-bar">
+  <span id="note-label">備　註</span>
+  <input id="note-input" type="text" maxlength="30"
+    placeholder="客廳、主臥、樑柱…" autocomplete="off"
+    oninput="onNoteInput()">
+  <button id="note-clear" onclick="clearNote()">✕</button>
 </div>
 
 <!-- Gallery toggle -->
@@ -859,28 +985,20 @@ let lastEventTime = 0;
 let headingHistory = [];
 let eventCount = 0;
 let useAbsolute = false;
-let receivedNonZero = false;  // track if we've ever received a real heading
 
 function handleOrientation(e) {
   eventCount++;
 
   // ── Priority 1: iOS webkitCompassHeading
   if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-    const raw = e.webkitCompassHeading;
-    // iOS sometimes fires heading=0 for first few events before real data arrives
-    // Accept 0 only after we've seen at least one non-zero value
-    if (raw !== 0 || receivedNonZero) {
-      if (raw !== 0) receivedNonZero = true;
-      heading = (raw + 360) % 360;
-      compassAvail = true;
-    }
+    heading = (e.webkitCompassHeading + 360) % 360;
+    compassAvail = true;
   }
   // ── Priority 2: Standard absolute (Android)
   else if (e.absolute === true && e.alpha !== null) {
     heading = (360 - e.alpha + 360) % 360;
     compassAvail = true;
     useAbsolute = true;
-    receivedNonZero = true;
   }
   // ── Priority 3: Generic alpha fallback
   else if (e.alpha !== null && !useAbsolute) {
@@ -895,16 +1013,22 @@ function handleOrientation(e) {
     if (e.beta  !== null) beta  = e.beta;
     if (e.gamma !== null) gamma = e.gamma;
 
-    // Stuck-at-zero detection
+    // Stuck detection — show appropriate warning
     headingHistory.push(heading);
-    if (headingHistory.length > 20) headingHistory.shift();
-    if (headingHistory.length >= 10) {
+    if (headingHistory.length > 30) headingHistory.shift();
+    if (headingHistory.length >= 20) {
       const spread = Math.max(...headingHistory) - Math.min(...headingHistory);
       const bar = document.getElementById('sensor-bar');
-      if (spread < 0.5) {
+      const msg = document.getElementById('no-compass-msg');
+      if (spread < 1.0) {
         bar.style.display = 'block';
-        document.getElementById('no-compass-msg').textContent =
-          '🔄 指針卡住？請轉動手機做∞字形校正';
+        // Check if webkitCompassAccuracy is bad (>= 3 means unreliable on iOS)
+        const accuracy = e ? e.webkitCompassAccuracy : null;
+        if (accuracy != null && accuracy >= 3) {
+          msg.textContent = '🧲 磁場干擾！建議遠離金屬/電器後校正';
+        } else {
+          msg.textContent = '🔄 指針卡住？請轉動手機做∞字形校正';
+        }
       } else if (bar.style.display !== 'none') {
         bar.style.display = 'none';
       }
@@ -997,7 +1121,85 @@ function toggleCoordFormat() {
 }
 
 // ════════════════════════════════════════════
-// GPS
+// Note bar
+// ════════════════════════════════════════════
+let noteBarOpen = false;
+let currentNote = '';
+
+function toggleNoteBar() {
+  noteBarOpen = !noteBarOpen;
+  document.getElementById('note-bar').classList.toggle('open', noteBarOpen);
+  if (noteBarOpen) {
+    setTimeout(() => document.getElementById('note-input').focus(), 320);
+  }
+}
+
+function onNoteInput() {
+  currentNote = document.getElementById('note-input').value.trim();
+  const btn = document.getElementById('note-toggle');
+  btn.textContent = currentNote ? `✏ ${currentNote}` : '✏ 備註';
+  btn.classList.toggle('has-note', !!currentNote);
+}
+
+function clearNote() {
+  document.getElementById('note-input').value = '';
+  currentNote = '';
+  document.getElementById('note-toggle').textContent = '✏ 備註';
+  document.getElementById('note-toggle').classList.remove('has-note');
+}
+
+// ════════════════════════════════════════════
+// Posture detection (based on beta)
+// ════════════════════════════════════════════
+function getPostureLabel(b) {
+  const ab = Math.abs(b);
+  if (ab < 20)  return '俯視';   // phone flat, pointing down
+  if (ab > 70)  return '平視';   // phone upright
+  return '斜視';                  // in between
+}
+
+// ════════════════════════════════════════════
+// Reverse Geocoding (OpenStreetMap Nominatim)
+// ════════════════════════════════════════════
+let streetName = '';
+let lastGeocodeLat = null;
+let lastGeocodeLon = null;
+let geocodeTimer = null;
+
+async function reverseGeocode(lat, lon) {
+  // Only fetch if moved > ~50m from last fetch
+  if (lastGeocodeLat !== null) {
+    const dlat = lat - lastGeocodeLat;
+    const dlon = lon - lastGeocodeLon;
+    const dist = Math.sqrt(dlat*dlat + dlon*dlon) * 111000;
+    if (dist < 50) return;
+  }
+  lastGeocodeLat = lat;
+  lastGeocodeLon = lon;
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=zh-TW`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'zh-TW' } });
+    const data = await res.json();
+    const addr = data.address || {};
+    // Priority: road > suburb > neighbourhood > city_district
+    streetName =
+      addr.road ||
+      addr.pedestrian ||
+      addr.suburb ||
+      addr.neighbourhood ||
+      addr.city_district ||
+      '';
+    const el = document.getElementById('street-overlay');
+    if (streetName) {
+      el.textContent = `📍 ${streetName}`;
+      el.style.display = 'block';
+    }
+  } catch(_) {}
+}
+
+// ════════════════════════════════════════════
+// GPS  (updated to trigger geocoding)
 // ════════════════════════════════════════════
 function initGPS() {
   if (!navigator.geolocation) return;
@@ -1010,6 +1212,11 @@ function initGPS() {
     document.getElementById('gps-alt').textContent =
       pos.coords.altitude ? `海拔 ${Math.round(pos.coords.altitude)} m` : `精度 ±${acc}m`;
     document.getElementById('accuracy-value').textContent = `±${acc}m`;
+
+    // Throttle reverse geocoding
+    clearTimeout(geocodeTimer);
+    geocodeTimer = setTimeout(() =>
+      reverseGeocode(pos.coords.latitude, pos.coords.longitude), 1500);
   }, () => {
     document.getElementById('gps-coords').textContent = 'GPS 不可用';
   }, { enableHighAccuracy: true });
@@ -1089,6 +1296,24 @@ function updateLevel(b, g) {
 }
 
 // ════════════════════════════════════════════
+// Compass Mode  ('needle' = rotating needle | 'dial' = rotating dial)
+// ════════════════════════════════════════════
+let compassMode = 'needle';
+
+function toggleCompassMode() {
+  compassMode = compassMode === 'needle' ? 'dial' : 'needle';
+  const btn   = document.getElementById('compass-mode-btn');
+  const label = document.getElementById('compass-mode-label');
+  if (compassMode === 'dial') {
+    btn.classList.add('mode-dial');
+    label.textContent = '轉盤模式';
+  } else {
+    btn.classList.remove('mode-dial');
+    label.textContent = '指針模式';
+  }
+}
+
+// ════════════════════════════════════════════
 // Compass Rose Canvas
 // ════════════════════════════════════════════
 function updateCompassRose(h) {
@@ -1122,9 +1347,16 @@ function updateCompassRose(h) {
   ctx.lineWidth = 1; ctx.stroke();
   ctx.restore();
 
-  // ── Fixed tick marks & cardinal labels (do NOT rotate) ──
+  // ── MODE A: 指針模式 — fixed dial, rotating needle ──
+  // ── MODE B: 轉盤模式 — rotating dial, fixed needle pointing up ──
+  const dialRotation    = compassMode === 'dial' ? -h * Math.PI / 180 : 0;
+  const needleRotation  = compassMode === 'dial' ? 0 : -h * Math.PI / 180;
+
+  // Tick marks & cardinal labels — rotate in dial mode
   ctx.save();
   ctx.translate(cx, cy);
+  ctx.rotate(dialRotation);
+
   for (let i = 0; i < 360; i += 5) {
     const rad = i * Math.PI / 180;
     const isMajor = i % 90 === 0;
@@ -1139,7 +1371,8 @@ function updateCompassRose(h) {
     ctx.lineWidth = isMajor ? 1.5 : 1;
     ctx.stroke();
   }
-  // Fixed cardinal labels: N always at top, E right, S bottom, W left
+
+  // Cardinal labels
   const cardinals = [
     { label:'N', angle:0,   color:'#e74c3c' },
     { label:'E', angle:90,  color:'rgba(200,168,75,0.7)' },
@@ -1157,14 +1390,30 @@ function updateCompassRose(h) {
   });
   ctx.restore();
 
-  // ── Rotating needle — points to magnetic north ──
-  // heading = direction phone is facing; needle must point opposite = -h
+  // In dial mode: fixed red triangle at top pointing down = "you are facing this direction"
+  if (compassMode === 'dial') {
+    ctx.save();
+    ctx.translate(cx, cy);
+    // Fixed marker at 12 o'clock (north reference line)
+    ctx.beginPath();
+    ctx.moveTo(0, -(r + 2));
+    ctx.lineTo(4, -(r - 8));
+    ctx.lineTo(-4, -(r - 8));
+    ctx.closePath();
+    ctx.fillStyle = '#e74c3c';
+    ctx.shadowColor = 'rgba(231,76,60,0.8)';
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Needle — rotates in needle mode, fixed upright in dial mode
+  const nl = r * 0.60;
+  const nw = r * 0.10;
+
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(-h * Math.PI / 180);  // rotate so north end aims at true north
-
-  const nl = r * 0.60;  // needle length
-  const nw = r * 0.10;  // needle half-width
+  ctx.rotate(needleRotation);
 
   // Red north tip
   ctx.beginPath();
@@ -1186,7 +1435,6 @@ function updateCompassRose(h) {
   ctx.fillStyle = 'rgba(200,168,75,0.55)';
   ctx.shadowBlur = 0;
   ctx.fill();
-
   ctx.restore();
 
   // Center dot (always on top)
@@ -1354,8 +1602,11 @@ function capturePhoto() {
   const dir = getDir(deg);
   const now = new Date();
   const timeStr = now.toLocaleString('zh-TW', { hour12: false });
+  const posture = getPostureLabel(beta);
+  const noteSnap = currentNote;
+  const streetSnap = streetName;
 
-  drawStamp(ctx, sw, sh, deg, dir, timeStr);
+  drawStamp(ctx, sw, sh, deg, dir, timeStr, posture, noteSnap, streetSnap);
 
   const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
   const photo = {
@@ -1363,51 +1614,93 @@ function capturePhoto() {
     lat: locationData ? locationData.latitude.toFixed(5) : null,
     lon: locationData ? locationData.longitude.toFixed(5) : null,
     time: timeStr,
+    note: noteSnap,
+    street: streetSnap,
+    posture,
   };
   photos.unshift(photo);
   updateGallery();
   updatePhotoCount();
 }
 
-function drawStamp(ctx, W, H, deg, dir, timeStr) {
-  // ── Stronger gradient mask — visible even in bright/snowy scenes ──
-  const grad = ctx.createLinearGradient(0, H * 0.60, 0, H);
-  grad.addColorStop(0, 'rgba(0,0,0,0)');
-  grad.addColorStop(0.4, 'rgba(0,0,0,0.55)');
-  grad.addColorStop(1,   'rgba(0,0,0,0.88)');
+function drawStamp(ctx, W, H, deg, dir, timeStr, posture, note, street) {
+  // ── Gradient mask ──
+  const grad = ctx.createLinearGradient(0, H * 0.55, 0, H);
+  grad.addColorStop(0,   'rgba(0,0,0,0)');
+  grad.addColorStop(0.35,'rgba(0,0,0,0.55)');
+  grad.addColorStop(1,   'rgba(0,0,0,0.90)');
   ctx.fillStyle = grad;
-  ctx.fillRect(0, H * 0.60, W, H * 0.40);
+  ctx.fillRect(0, H * 0.55, W, H * 0.45);
 
   ctx.save();
+  ctx.shadowBlur = 0;
 
-  // ── Direction stamp ──
-  ctx.shadowBlur = 0; // no shadow needed with strong mask
+  // ── Left side ──
+
+  // Note (if any) — top-left yellow pill
+  if (note) {
+    const noteFont = H * 0.028;
+    ctx.font = `bold ${noteFont}px "Noto Serif TC", serif`;
+    const noteW = ctx.measureText(note).width + noteFont * 1.2;
+    const noteX = W * 0.04;
+    const noteY = H * 0.78;
+    const noteH = noteFont * 1.6;
+    ctx.fillStyle = 'rgba(200,168,75,0.25)';
+    ctx.beginPath();
+    ctx.roundRect(noteX - noteFont*0.4, noteY - noteH*0.75, noteW, noteH, noteH/2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(200,168,75,0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#f0d080';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(note, noteX, noteY - noteH*0.05);
+  }
+
+  // Direction + degree (large, bottom-left)
   ctx.fillStyle = '#e74c3c';
-  ctx.font = `bold ${H * 0.072}px "Noto Serif TC", serif`;
+  ctx.font = `bold ${H * 0.07}px "Noto Serif TC", serif`;
   ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
   ctx.fillText(`${dir.zh}  ${deg}°`, W * 0.04, H * 0.91);
 
-  // ── Coordinates (DMS or decimal based on user setting) ──
-  ctx.fillStyle = 'rgba(200,168,75,0.92)';
+  // Posture label next to direction
+  ctx.fillStyle = 'rgba(200,168,75,0.65)';
   ctx.font = `${H * 0.026}px "Noto Serif TC", serif`;
-  ctx.textAlign = 'right';
+  ctx.fillText(posture || '', W * 0.04, H * 0.945);
 
-  const latVal = locationData ? locationData.latitude  : (photos[0]?.lat ? parseFloat(photos[0].lat) : null);
-  const lonVal = locationData ? locationData.longitude : (photos[0]?.lon ? parseFloat(photos[0].lon) : null);
+  // Street name (if available)
+  if (street) {
+    ctx.fillStyle = 'rgba(200,168,75,0.75)';
+    ctx.font = `${H * 0.024}px "Noto Serif TC", serif`;
+    // Truncate if too long
+    let streetStr = `📍 ${street}`;
+    ctx.fillText(streetStr, W * 0.04, H * 0.975);
+  }
+
+  // ── Right side ──
+  ctx.fillStyle = 'rgba(200,168,75,0.88)';
+  ctx.font = `${H * 0.024}px "Noto Serif TC", serif`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'alphabetic';
+
+  const latVal = locationData ? locationData.latitude  : null;
+  const lonVal = locationData ? locationData.longitude : null;
 
   ctx.fillText(timeStr, W * 0.97, H * 0.885);
   if (latVal !== null) {
     if (coordFormat === 'dms') {
-      ctx.fillText(decToDMS(latVal, true),  W * 0.97, H * 0.921);
-      ctx.fillText(decToDMS(lonVal, false), W * 0.97, H * 0.957);
+      ctx.fillText(decToDMS(latVal, true),  W * 0.97, H * 0.918);
+      ctx.fillText(decToDMS(lonVal, false), W * 0.97, H * 0.951);
     } else {
-      ctx.fillText(`${latVal.toFixed(5)}° N`, W * 0.97, H * 0.921);
-      ctx.fillText(`${lonVal.toFixed(5)}° E`, W * 0.97, H * 0.957);
+      ctx.fillText(`${latVal.toFixed(5)}° N`, W * 0.97, H * 0.918);
+      ctx.fillText(`${lonVal.toFixed(5)}° E`, W * 0.97, H * 0.951);
     }
   }
 
-  // ── Mini compass ──
-  drawMiniCompass(ctx, W * 0.06, H * 0.075, H * 0.052, deg);
+  // ── Mini compass (top-left corner) ──
+  drawMiniCompass(ctx, W * 0.055, H * 0.07, H * 0.048, deg);
   ctx.restore();
 }
 
