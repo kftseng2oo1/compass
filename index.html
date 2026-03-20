@@ -327,6 +327,11 @@
   #compass-rose {
     width: 110px; height: 110px;
     display: block;
+    /* Prevent iOS long-press copy/callout menu */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    touch-action: none;
   }
 
   /* Mode badge — top-right corner of the rose */
@@ -741,7 +746,7 @@
 
   <!-- Compass Panel -->
   <div id="compass-panel">
-    <div id="compass-wrapper" onclick="toggleCompassMode()" title="點擊切換指針／轉盤模式">
+    <div id="compass-wrapper" title="點擊切換模式・長按手動調整">
       <canvas id="compass-rose" width="110" height="110"></canvas>
       <div id="compass-mode-badge">指針</div>
     </div>
@@ -1830,6 +1835,7 @@ function getTouchAngle(e) {
 const roseEl = document.getElementById('compass-rose');
 
 roseEl.addEventListener('touchstart', e => {
+  e.preventDefault(); // block iOS long-press callout
   const angle = getTouchAngle(e);
   longPressTimer = setTimeout(() => {
     dragActive = true;
@@ -1838,10 +1844,9 @@ roseEl.addEventListener('touchstart', e => {
     document.getElementById('compass-mode-badge').textContent = '✋手動';
     roseEl.style.outline = '2px solid rgba(231,76,60,0.7)';
     roseEl.style.borderRadius = '50%';
-    // Vibrate if supported
     if (navigator.vibrate) navigator.vibrate(30);
   }, 500);
-}, { passive: true });
+}, { passive: false }); // passive:false needed for preventDefault
 
 roseEl.addEventListener('touchmove', e => {
   clearTimeout(longPressTimer);
@@ -1855,12 +1860,17 @@ roseEl.addEventListener('touchmove', e => {
 }, { passive: false });
 
 roseEl.addEventListener('touchend', () => {
+  const wasLongPress = dragActive;
   clearTimeout(longPressTimer);
   if (dragActive) {
+    // End drag mode
     dragActive = false;
     roseEl.style.outline = '';
     document.getElementById('compass-mode-badge').textContent =
       compassMode === 'dial' ? '轉盤' : '指針';
+  } else if (!wasLongPress) {
+    // Short tap → toggle mode
+    toggleCompassMode();
   }
 });
 
