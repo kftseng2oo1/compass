@@ -158,6 +158,65 @@
   #dir-W { left: 24px; top: 50%; transform: translateY(-50%); }
   #dir-E { right: 24px; top: 50%; transform: translateY(-50%); }
 
+  /* ── Level Bubble ── */
+  #level-container {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    border: 1px solid rgba(200,168,75,0.35);
+    pointer-events: none;
+    z-index: 6;
+    /* outer ring glow */
+    box-shadow: 0 0 0 1px rgba(200,168,75,0.1), inset 0 0 12px rgba(0,0,0,0.4);
+  }
+  /* Inner target ring */
+  #level-target {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 14px; height: 14px;
+    border: 1px solid rgba(200,168,75,0.5);
+    border-radius: 50%;
+  }
+  /* Cross lines inside level */
+  #level-container::before,
+  #level-container::after {
+    content: '';
+    position: absolute;
+    background: rgba(200,168,75,0.18);
+  }
+  #level-container::before { width: 1px; height: 100%; left: 50%; top: 0; }
+  #level-container::after  { height: 1px; width: 100%; top: 50%; left: 0; }
+  /* Bubble */
+  #level-bubble {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(240,208,128,0.9), rgba(138,106,26,0.8));
+    box-shadow: 0 0 8px rgba(200,168,75,0.5), inset 0 1px 2px rgba(255,255,255,0.3);
+    transform: translate(-50%, -50%);
+    transition: background 0.25s, box-shadow 0.25s;
+    /* NO CSS transition for position — JS controls it per frame */
+  }
+  #level-bubble.centered {
+    background: radial-gradient(circle at 35% 30%, #fff 0%, #e74c3c 60%);
+    box-shadow: 0 0 14px rgba(231,76,60,0.85), inset 0 1px 2px rgba(255,255,255,0.5);
+  }
+  /* Tilt indicator text */
+  #tilt-readout {
+    position: absolute;
+    bottom: 6px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px; letter-spacing: 0.08em;
+    color: rgba(200,168,75,0.6);
+    white-space: nowrap;
+    font-family: 'Noto Serif TC', serif;
+    pointer-events: none;
+  }
+
   /* Degree tape on top of viewfinder */
   #degree-tape {
     position: absolute; top: 0; left: 0; right: 0;
@@ -534,7 +593,7 @@
     <div class="subtitle">PHOTO COMPASS</div>
     <h1>拍照羅盤</h1>
   </div>
-  <div id="location-info">
+  <div id="location-info" onclick="toggleCoordFormat()" style="cursor:pointer" title="點擊切換座標格式">
     <div id="gps-coords">定位中…</div>
     <div id="gps-alt">—</div>
     <div id="time-display">—</div>
@@ -551,6 +610,13 @@
     <!-- Degree Tape -->
     <div id="degree-tape">
       <canvas id="tape-canvas"></canvas>
+    </div>
+
+    <!-- Level Bubble -->
+    <div id="level-container">
+      <div id="level-target"></div>
+      <div id="level-bubble"></div>
+      <div id="tilt-readout">—</div>
     </div>
 
     <!-- Overlay -->
@@ -574,8 +640,8 @@
     </div>
 
     <div id="info-panel">
-      <div class="info-box">
-        <div class="info-label">方位角</div>
+      <div class="info-box" onclick="reloadPage()" style="cursor:pointer" title="點擊重新整理">
+        <div class="info-label">方位角 ↺</div>
         <div class="info-value" id="bearing-value">—°</div>
       </div>
       <div class="info-box">
@@ -645,8 +711,10 @@
 // ════════════════════════════════════════════
 // State
 // ════════════════════════════════════════════
-let heading = 0;          // degrees, 0=North
+let heading = 0;
 let headingSmooth = 0;
+let beta = 0;    // front-back tilt (-180 to 180), ~90 when phone upright
+let gamma = 0;   // left-right tilt (-90 to 90)
 let stream = null;
 let photos = [];          // {dataUrl, heading, dir, lat, lon, time}
 let currentPreviewIdx = -1;
@@ -681,6 +749,17 @@ function getDir(h) {
 // ════════════════════════════════════════════
 async function startApp() {
   const btn = document.getElementById('start-btn');
+
+  // ── Detect file:// protocol ──
+  if (location.protocol === 'file:') {
+    document.getElementById('perm-error').style.display = 'block';
+    document.getElementById('perm-error').innerHTML =
+      '⚠ 請用 HTTPS 網址開啟（如 GitHub Pages）<br><small>file:// 協議無法存取相機與感測器</small>';
+    document.getElementById('how-to-open').style.display = 'flex';
+    btn.textContent = '無法啟動';
+    return;
+  }
+
   btn.textContent = '啟動中…'; btn.disabled = true;
   document.getElementById('perm-error').style.display = 'none';
 
@@ -707,27 +786,27 @@ async function startApp() {
     console.warn('Compass failed:', e.name, e.message);
   }
 
-  // GPS (best-effort, no block)
+  // GPS + clock (best-effort)
   initGPS();
   setInterval(updateClock, 1000); updateClock();
 
+  // Wake Lock — keep screen on
+  requestWakeLock();
+
   if (cameraOk || compassOk) {
-    // At least one works — proceed
     document.getElementById('permission-screen').style.display = 'none';
     permissionGranted = true;
     if (!cameraOk) {
-      // Show placeholder in video area
       document.getElementById('video').style.display = 'none';
       const camCont = document.getElementById('camera-container');
       camCont.style.background = 'radial-gradient(ellipse at center, #1a1810 0%, #0a0a0f 100%)';
       const msg = document.createElement('div');
-      msg.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(200,168,75,0.4);font-size:13px;letter-spacing:0.15em;text-align:center;';
+      msg.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(200,168,75,0.4);font-size:13px;letter-spacing:0.15em;text-align:center;white-space:pre-line;';
       msg.textContent = '相機不可用\n羅盤功能仍正常運作';
       camCont.appendChild(msg);
     }
     startRenderLoop();
   } else {
-    // Both failed — show instructions
     const errEl = document.getElementById('perm-error');
     errEl.style.display = 'block';
     errEl.innerHTML = '⚠ 無法取得相機或感測器權限';
@@ -743,6 +822,10 @@ async function initCompass() {
   // iOS 13+ requires explicit permission request triggered by user gesture
   if (typeof DeviceOrientationEvent !== 'undefined' &&
       typeof DeviceOrientationEvent.requestPermission === 'function') {
+
+    // Check if already granted this session (avoid reload loop)
+    const alreadyGranted = sessionStorage.getItem('orientationGranted');
+
     let perm;
     try {
       perm = await DeviceOrientationEvent.requestPermission();
@@ -750,96 +833,158 @@ async function initCompass() {
       throw new Error('Orientation denied');
     }
     if (perm !== 'granted') throw new Error('Orientation denied');
+
+    if (!alreadyGranted) {
+      // First time granted on iOS — must reload for sensor data to flow correctly
+      sessionStorage.setItem('orientationGranted', '1');
+      location.reload();
+      return; // page reloads, startApp() runs again automatically
+    }
   }
 
-  // Try absolute first (Android), fallback to generic (iOS uses webkit)
-  let gotEvent = false;
+  window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+  window.addEventListener('deviceorientation', handleOrientation, true);
 
-  window.addEventListener('deviceorientationabsolute', (e) => {
-    gotEvent = true;
-    handleOrientation(e);
-  }, true);
-
-  window.addEventListener('deviceorientation', (e) => {
-    // Only use generic event if absolute didn't fire
-    handleOrientation(e);
-  }, true);
-
-  // Show sensor status after 2s
+  // Show warning if no data after 3s
   setTimeout(() => {
     if (!compassAvail) {
       document.getElementById('sensor-bar').style.display = 'block';
-      document.getElementById('no-compass-msg').textContent = '⚠ 感測器未回應，請點此校正或重新整理';
+      document.getElementById('no-compass-msg').textContent =
+        '⚠ 感測器無回應 — 請轉動手機或點此重新整理';
     }
-  }, 2000);
+  }, 3000);
 }
 
 let lastEventTime = 0;
+let headingHistory = [];
+let eventCount = 0;
+let useAbsolute = false;   // prefer absolute once confirmed
+
 function handleOrientation(e) {
-  const now = Date.now();
+  eventCount++;
 
-  let h = null;
-
-  // iOS: webkitCompassHeading is the most reliable (true north, compensated)
-  if (e.webkitCompassHeading != null && e.webkitCompassHeading >= 0) {
-    h = e.webkitCompassHeading;
-  }
-  // Android absolute: alpha is clockwise from north when absolute=true
-  else if (e.absolute && e.alpha != null) {
-    h = (360 - e.alpha + 360) % 360;
-  }
-  // Fallback: generic alpha (may not be true north)
-  else if (e.alpha != null) {
-    h = (360 - e.alpha + 360) % 360;
-  }
-
-  if (h !== null && !isNaN(h)) {
+  // ── Priority 1: iOS webkitCompassHeading (true north, tilt-compensated)
+  if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+    heading = (e.webkitCompassHeading + 360) % 360;
     compassAvail = true;
-    heading = h;
-    lastEventTime = now;
+  }
+  // ── Priority 2: Standard absolute (Android)
+  else if (e.absolute === true && e.alpha !== null) {
+    heading = (360 - e.alpha + 360) % 360;
+    compassAvail = true;
+    useAbsolute = true;
+  }
+  // ── Priority 3: Generic alpha fallback
+  else if (e.alpha !== null && !useAbsolute) {
+    heading = (360 - e.alpha + 360) % 360;
+    compassAvail = true;
+  }
 
-    // Update accuracy indicator with compass accuracy if available
-    if (e.webkitCompassAccuracy != null && e.webkitCompassAccuracy > 0) {
-      const accEl = document.getElementById('accuracy-value');
-      if (!locationData) {
-        accEl.textContent = `±${Math.round(e.webkitCompassAccuracy)}°`;
+  if (compassAvail) {
+    lastEventTime = Date.now();
+
+    // Capture tilt angles for level bubble
+    if (e.beta  !== null) beta  = e.beta;
+    if (e.gamma !== null) gamma = e.gamma;
+
+    // Stuck-at-zero detection
+    headingHistory.push(heading);
+    if (headingHistory.length > 20) headingHistory.shift();
+    if (headingHistory.length >= 10) {
+      const spread = Math.max(...headingHistory) - Math.min(...headingHistory);
+      const bar = document.getElementById('sensor-bar');
+      if (spread < 0.5) {
+        bar.style.display = 'block';
+        document.getElementById('no-compass-msg').textContent =
+          '🔄 指針卡住？請轉動手機做∞字形校正';
+      } else if (bar.style.display !== 'none') {
+        bar.style.display = 'none';
       }
     }
 
-    // Hide sensor warning bar
-    const bar = document.getElementById('sensor-bar');
-    if (bar.style.display !== 'none') bar.style.display = 'none';
+    // Compass accuracy (iOS)
+    if (e.webkitCompassAccuracy != null && e.webkitCompassAccuracy > 0 && !locationData) {
+      document.getElementById('accuracy-value').textContent =
+        `±${Math.round(e.webkitCompassAccuracy)}°`;
+    }
   }
 }
 
 // Re-request compass permission (for cases where it was denied or timed out)
 async function recalibrateCompass() {
   compassAvail = false;
+  headingHistory = [];
   document.getElementById('no-compass-msg').textContent = '⏳ 重新申請感測器權限…';
   try {
     if (typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function') {
       const perm = await DeviceOrientationEvent.requestPermission();
       if (perm !== 'granted') {
-        document.getElementById('no-compass-msg').textContent = '❌ 權限被拒，請至設定 > Safari > 動態與方向 開啟';
+        document.getElementById('no-compass-msg').textContent =
+          '❌ 請至 設定 > 隱私權 > 動態與健身 開啟 Safari';
         return;
       }
     }
-    // Re-attach listeners
-    window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
-    window.removeEventListener('deviceorientation', handleOrientation, true);
-    window.addEventListener('deviceorientationabsolute', handleOrientation, true);
-    window.addEventListener('deviceorientation', handleOrientation, true);
-    document.getElementById('no-compass-msg').textContent = '✓ 已重新連線，請轉動手機…';
-    setTimeout(() => {
-      if (!compassAvail) {
-        document.getElementById('no-compass-msg').textContent = '⚠ 仍未偵測，請至設定 > 隱私權 > 動態與健身 確認已開啟';
-      } else {
-        document.getElementById('sensor-bar').style.display = 'none';
-      }
-    }, 3000);
+    // iOS: after permission, must reload to get fresh sensor stream
+    document.getElementById('no-compass-msg').textContent = '✓ 權限已授予，重新整理中…';
+    setTimeout(() => location.reload(), 800);
   } catch(e) {
     document.getElementById('no-compass-msg').textContent = '❌ 錯誤：' + e.message;
+  }
+}
+
+function reloadPage() {
+  location.reload();
+}
+
+// ════════════════════════════════════════════
+// Wake Lock — prevent screen from sleeping
+// ════════════════════════════════════════════
+let wakeLock = null;
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    // Re-acquire on visibility change (iOS releases it when tab hides)
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState === 'visible' && wakeLock?.released) {
+        try { wakeLock = await navigator.wakeLock.request('screen'); } catch(_) {}
+      }
+    });
+  } catch(_) {}
+}
+
+// ════════════════════════════════════════════
+// Coordinate format helpers
+// ════════════════════════════════════════════
+let coordFormat = 'decimal'; // 'decimal' | 'dms'
+
+function decToDMS(deg, isLat) {
+  const d = Math.floor(Math.abs(deg));
+  const mFull = (Math.abs(deg) - d) * 60;
+  const m = Math.floor(mFull);
+  const s = ((mFull - m) * 60).toFixed(1);
+  const dir = isLat ? (deg >= 0 ? 'N' : 'S') : (deg >= 0 ? 'E' : 'W');
+  return `${d}°${m}'${s}"${dir}`;
+}
+
+function formatCoords(lat, lon) {
+  if (coordFormat === 'dms') {
+    return `${decToDMS(parseFloat(lat), true)}  ${decToDMS(parseFloat(lon), false)}`;
+  }
+  return `${lat}° N  ${lon}° E`;
+}
+
+function toggleCoordFormat() {
+  coordFormat = coordFormat === 'decimal' ? 'dms' : 'decimal';
+  // Immediately refresh display if GPS data is available
+  if (locationData) {
+    const lat = locationData.latitude.toFixed(5);
+    const lon = locationData.longitude.toFixed(5);
+    const el = document.getElementById('gps-coords');
+    el.textContent = formatCoords(lat, lon);
+    // DMS strings are longer — shrink font to fit
+    el.style.fontSize = coordFormat === 'dms' ? '8px' : '';
   }
 }
 
@@ -853,7 +998,7 @@ function initGPS() {
     const lat = pos.coords.latitude.toFixed(5);
     const lon = pos.coords.longitude.toFixed(5);
     const acc = Math.round(pos.coords.accuracy);
-    document.getElementById('gps-coords').textContent = `${lat}° N  ${lon}° E`;
+    document.getElementById('gps-coords').textContent = formatCoords(lat, lon);
     document.getElementById('gps-alt').textContent =
       pos.coords.altitude ? `海拔 ${Math.round(pos.coords.altitude)} m` : `精度 ±${acc}m`;
     document.getElementById('accuracy-value').textContent = `±${acc}m`;
@@ -888,10 +1033,49 @@ function startRenderLoop() {
     updateTape(headingSmooth);
     updateDirectionOverlays(headingSmooth);
     updateInfoPanel(headingSmooth);
+    updateLevel(beta, gamma);
 
     animFrameId = requestAnimationFrame(loop);
   }
   loop();
+}
+
+// ════════════════════════════════════════════
+// Level Bubble
+// ════════════════════════════════════════════
+function updateLevel(b, g) {
+  const bubble = document.getElementById('level-bubble');
+  const readout = document.getElementById('tilt-readout');
+  if (!bubble) return;
+
+  // Phone held upright for photography: beta ≈ 90°
+  // Offset so bubble is centred when phone is vertical
+  const tiltFB = b - 90;   // front-back deviation from upright
+  const tiltLR = g;         // left-right (gamma is already centred at 0)
+
+  // Max pixel travel = radius of container - radius of bubble = 36 - 9 = 27px
+  const maxPx = 27;
+  const clamp = (v, lim) => Math.max(-lim, Math.min(lim, v));
+
+  // Map ±15° → ±maxPx  (beyond 15° the bubble hits the wall)
+  const scale = maxPx / 15;
+  const moveX = clamp(tiltLR * scale, maxPx);
+  const moveY = clamp(tiltFB * scale, maxPx);
+
+  bubble.style.transform =
+    `translate(calc(-50% + ${moveX.toFixed(1)}px), calc(-50% + ${moveY.toFixed(1)}px))`;
+
+  // Centred = within ±2° on both axes
+  const isCentred = Math.abs(tiltLR) < 2 && Math.abs(tiltFB) < 2;
+  bubble.classList.toggle('centered', isCentred);
+
+  // Tilt readout — only show when sensor active
+  if (compassAvail) {
+    readout.textContent = isCentred
+      ? '水平 ✓'
+      : `${tiltLR >= 0 ? '+' : ''}${tiltLR.toFixed(1)}° ${tiltFB >= 0 ? '+' : ''}${tiltFB.toFixed(1)}°`;
+    readout.style.color = isCentred ? 'rgba(231,76,60,0.9)' : 'rgba(200,168,75,0.6)';
+  }
 }
 
 // ════════════════════════════════════════════
@@ -1120,26 +1304,50 @@ function updateInfoPanel(h) {
 function capturePhoto() {
   const video = document.getElementById('video');
   const canvas = document.getElementById('photo-canvas');
+  const container = document.getElementById('camera-container');
 
   // Flash
   const flash = document.getElementById('flash');
   flash.style.opacity = '1';
   setTimeout(() => { flash.style.opacity = '0'; }, 80);
 
-  canvas.width  = video.videoWidth  || 1280;
-  canvas.height = video.videoHeight || 720;
+  const vW = video.videoWidth  || 1280;
+  const vH = video.videoHeight || 720;
+
+  // ── Correct crop: match what user sees (object-fit: cover) ──
+  const dispW = container.offsetWidth;
+  const dispH = container.offsetHeight;
+  const videoAR = vW / vH;
+  const dispAR  = dispW / dispH;
+
+  let sx, sy, sw, sh;
+  if (videoAR > dispAR) {
+    // Video wider than display — crop sides
+    sh = vH;
+    sw = Math.round(vH * dispAR);
+    sx = Math.round((vW - sw) / 2);
+    sy = 0;
+  } else {
+    // Video taller than display — crop top/bottom
+    sw = vW;
+    sh = Math.round(vW / dispAR);
+    sx = 0;
+    sy = Math.round((vH - sh) / 2);
+  }
+
+  canvas.width  = sw;
+  canvas.height = sh;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
 
   const deg = Math.round(((heading % 360) + 360) % 360);
   const dir = getDir(deg);
   const now = new Date();
   const timeStr = now.toLocaleString('zh-TW', { hour12: false });
 
-  // Stamp on image
-  drawStamp(ctx, canvas.width, canvas.height, deg, dir, timeStr);
+  drawStamp(ctx, sw, sh, deg, dir, timeStr);
 
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
   const photo = {
     dataUrl, heading: deg, dir,
     lat: locationData ? locationData.latitude.toFixed(5) : null,
@@ -1152,32 +1360,44 @@ function capturePhoto() {
 }
 
 function drawStamp(ctx, W, H, deg, dir, timeStr) {
-  // Gradient bar at bottom
-  const grad = ctx.createLinearGradient(0, H * 0.72, 0, H);
+  // ── Stronger gradient mask — visible even in bright/snowy scenes ──
+  const grad = ctx.createLinearGradient(0, H * 0.60, 0, H);
   grad.addColorStop(0, 'rgba(0,0,0,0)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.78)');
+  grad.addColorStop(0.4, 'rgba(0,0,0,0.55)');
+  grad.addColorStop(1,   'rgba(0,0,0,0.88)');
   ctx.fillStyle = grad;
-  ctx.fillRect(0, H * 0.72, W, H * 0.28);
+  ctx.fillRect(0, H * 0.60, W, H * 0.40);
 
-  // Direction
   ctx.save();
+
+  // ── Direction stamp ──
+  ctx.shadowBlur = 0; // no shadow needed with strong mask
   ctx.fillStyle = '#e74c3c';
   ctx.font = `bold ${H * 0.072}px "Noto Serif TC", serif`;
   ctx.textAlign = 'left';
-  ctx.shadowColor = 'rgba(231,76,60,0.5)'; ctx.shadowBlur = 12;
-  ctx.fillText(`${dir.zh}  ${deg}°`, W * 0.04, H * 0.93);
+  ctx.fillText(`${dir.zh}  ${deg}°`, W * 0.04, H * 0.91);
 
-  // Info
-  ctx.fillStyle = 'rgba(200,168,75,0.85)';
-  ctx.font = `${H * 0.028}px "Noto Serif TC", serif`;
-  ctx.shadowBlur = 6; ctx.shadowColor = 'rgba(200,168,75,0.4)';
+  // ── Coordinates (DMS or decimal based on user setting) ──
+  ctx.fillStyle = 'rgba(200,168,75,0.92)';
+  ctx.font = `${H * 0.026}px "Noto Serif TC", serif`;
   ctx.textAlign = 'right';
-  const locStr = (photos[0]?.lat) ? `${photos[0].lat}°N  ${photos[0].lon}°E` : '';
-  ctx.fillText(timeStr, W * 0.97, H * 0.91);
-  if (locStr) ctx.fillText(locStr, W * 0.97, H * 0.96);
 
-  // Small compass rose stamp
-  drawMiniCompass(ctx, W * 0.06, H * 0.06, H * 0.048, deg);
+  const latVal = locationData ? locationData.latitude  : (photos[0]?.lat ? parseFloat(photos[0].lat) : null);
+  const lonVal = locationData ? locationData.longitude : (photos[0]?.lon ? parseFloat(photos[0].lon) : null);
+
+  ctx.fillText(timeStr, W * 0.97, H * 0.885);
+  if (latVal !== null) {
+    if (coordFormat === 'dms') {
+      ctx.fillText(decToDMS(latVal, true),  W * 0.97, H * 0.921);
+      ctx.fillText(decToDMS(lonVal, false), W * 0.97, H * 0.957);
+    } else {
+      ctx.fillText(`${latVal.toFixed(5)}° N`, W * 0.97, H * 0.921);
+      ctx.fillText(`${lonVal.toFixed(5)}° E`, W * 0.97, H * 0.957);
+    }
+  }
+
+  // ── Mini compass ──
+  drawMiniCompass(ctx, W * 0.06, H * 0.075, H * 0.052, deg);
   ctx.restore();
 }
 
@@ -1273,6 +1493,11 @@ function deleteCurrentPhoto() {
 document.getElementById('preview-modal').addEventListener('click', function(e) {
   if (e.target === this) closePreview();
 });
+
+// Auto-start after reload (sessionStorage flag set)
+if (sessionStorage.getItem('orientationGranted')) {
+  window.addEventListener('load', () => startApp());
+}
 
 // ════════════════════════════════════════════
 // Handle resize
