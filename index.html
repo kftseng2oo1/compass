@@ -321,42 +321,36 @@
     position: relative;
     width: 110px; height: 110px;
     flex-shrink: 0;
-    display: flex; flex-direction: column;
-    align-items: center; gap: 5px;
+    cursor: pointer;  /* whole rose is clickable */
   }
 
   #compass-rose {
     width: 110px; height: 110px;
+    display: block;
   }
 
-  /* Mode toggle button under compass */
-  #compass-mode-btn {
-    width: 100%;
-    padding: 3px 0;
-    background: rgba(200,168,75,0.08);
-    border: 1px solid rgba(200,168,75,0.25);
-    border-radius: 10px;
-    color: rgba(200,168,75,0.7);
-    font-family: 'Noto Serif TC', serif;
-    font-size: 9px; letter-spacing: 0.12em;
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center; gap: 4px;
+  /* Mode badge — top-right corner of the rose */
+  #compass-mode-badge {
+    position: absolute;
+    top: 2px; right: 2px;
+    background: rgba(10,10,15,0.82);
+    border: 1px solid rgba(200,168,75,0.3);
+    border-radius: 8px;
+    padding: 2px 6px;
+    font-size: 8px; letter-spacing: 0.1em;
+    color: rgba(200,168,75,0.65);
+    pointer-events: none;
     transition: all 0.2s;
+    white-space: nowrap;
   }
-  #compass-mode-btn:active { transform: scale(0.95); background: rgba(200,168,75,0.18); }
-  #compass-mode-btn.mode-dial {
-    color: var(--gold-light);
-    border-color: rgba(200,168,75,0.5);
-    background: rgba(200,168,75,0.12);
+  #compass-wrapper.mode-dial #compass-mode-badge {
+    color: var(--red-bright);
+    border-color: rgba(231,76,60,0.45);
+    background: rgba(10,10,15,0.88);
   }
-  #compass-mode-dot {
-    width: 6px; height: 6px; border-radius: 50%;
-    background: rgba(200,168,75,0.5);
-    transition: background 0.2s;
-  }
-  #compass-mode-btn.mode-dial #compass-mode-dot {
-    background: var(--red-bright);
-    box-shadow: 0 0 4px rgba(231,76,60,0.7);
+  /* Tap ripple feedback */
+  #compass-wrapper:active #compass-rose {
+    opacity: 0.75;
   }
 
   /* ── Info panel ── */
@@ -747,12 +741,9 @@
 
   <!-- Compass Panel -->
   <div id="compass-panel">
-    <div id="compass-wrapper">
+    <div id="compass-wrapper" onclick="toggleCompassMode()" title="點擊切換指針／轉盤模式">
       <canvas id="compass-rose" width="110" height="110"></canvas>
-      <button id="compass-mode-btn" onclick="toggleCompassMode()" title="切換羅盤模式">
-        <span id="compass-mode-dot"></span>
-        <span id="compass-mode-label">指針模式</span>
-      </button>
+      <div id="compass-mode-badge">指針</div>
     </div>
 
     <div id="info-panel">
@@ -1302,14 +1293,14 @@ let compassMode = 'needle';
 
 function toggleCompassMode() {
   compassMode = compassMode === 'needle' ? 'dial' : 'needle';
-  const btn   = document.getElementById('compass-mode-btn');
-  const label = document.getElementById('compass-mode-label');
+  const wrapper = document.getElementById('compass-wrapper');
+  const badge   = document.getElementById('compass-mode-badge');
   if (compassMode === 'dial') {
-    btn.classList.add('mode-dial');
-    label.textContent = '轉盤模式';
+    wrapper.classList.add('mode-dial');
+    badge.textContent = '轉盤';
   } else {
-    btn.classList.remove('mode-dial');
-    label.textContent = '指針模式';
+    wrapper.classList.remove('mode-dial');
+    badge.textContent = '指針';
   }
 }
 
