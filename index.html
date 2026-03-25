@@ -813,6 +813,7 @@
   <div id="preview-actions">
     <button class="modal-btn danger" onclick="deleteCurrentPhoto()">刪除</button>
     <button class="modal-btn" onclick="closePreview()">關閉</button>
+    <button class="modal-btn" onclick="shareReportPDF()" style="border-color:rgba(200,168,75,0.4);">📄 報告</button>
     <button class="modal-btn primary" onclick="downloadCurrentPhoto()">儲存</button>
   </div>
 </div>
@@ -1895,6 +1896,143 @@ roseEl.addEventListener('touchend', () => {
 window.addEventListener('resize', () => {
   // tape redraws on next frame
 });
+</script>
+
+<!-- jsPDF for in-browser PDF generation -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+// ════════════════════════════════════════════
+// PDF Report Generator
+// ════════════════════════════════════════════
+async function shareReportPDF() {
+  if (currentPreviewIdx < 0) return;
+  const p = photos[currentPreviewIdx];
+
+  if (!window.jspdf) {
+    alert('PDF 庫載入中，請稍後再試');
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const PW = 210, PH = 297;
+  const mg = 16;
+  let y = mg;
+
+  const cGold  = [200, 168, 75];
+  const cRed   = [192,  57, 43];
+  const cInk   = [ 15,  14, 18];
+  const cWhite = [255, 255, 255];
+  const cDim   = [140, 120, 70];
+
+  // ── Background ──
+  doc.setFillColor(...cInk);
+  doc.rect(0, 0, PW, PH, 'F');
+
+  // ── Top bar ──
+  doc.setFillColor(...cGold);
+  doc.rect(0, 0, PW, 7, 'F');
+
+  // ── Title ──
+  y = 16;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.setTextColor(...cGold);
+  doc.text('Photo Compass  \u62cd\u7167\u7f85\u76e4  \u73fe\u5834\u6e2c\u91cf\u5831\u544a', mg, y);
+  y += 5;
+  doc.setFontSize(8);
+  doc.setTextColor(...cDim);
+  doc.text('FIELD MEASUREMENT REPORT', mg, y);
+  y += 4;
+  doc.setDrawColor(...cGold);
+  doc.setLineWidth(0.3);
+  doc.line(mg, y, PW - mg, y);
+  y += 5;
+
+  // ── Photo ──
+  try {
+    const iW = PW - mg * 2;
+    const iH = Math.round(iW * 0.62);
+    doc.addImage(p.dataUrl, 'JPEG', mg, y, iW, iH, '', 'MEDIUM');
+    y += iH + 5;
+  } catch(e) { y += 3; }
+
+  doc.line(mg, y, PW - mg, y);
+  y += 6;
+
+  // ── Data section helper ──
+  function dataRow(label, value, valColor) {
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...cDim);
+    doc.text(label, mg, y);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...(valColor || cWhite));
+    doc.text(String(value), mg + 40, y);
+    y += 6.5;
+  }
+
+  // Direction (large)
+  doc.setFontSize(8); doc.setFont('helvetica','normal'); doc.setTextColor(...cDim);
+  doc.text('\u65b9\u4f4d\u89d2 / Bearing', mg, y);
+  doc.setFontSize(18); doc.setFont('helvetica','bold'); doc.setTextColor(...cRed);
+  doc.text(`${p.dir.zh}  ${p.heading}\u00b0`, mg + 40, y + 2);
+  y += 11;
+
+  if (p.posture) dataRow('\u62cd\u651d\u59ff\u614b / Posture', p.posture);
+
+  if (p.lat) {
+    dataRow('\u7def\u5ea6 / Latitude',  `${p.lat}\u00b0 N`, cGold);
+    dataRow('\u7d93\u5ea6 / Longitude', `${p.lon}\u00b0 E`, cGold);
+    dataRow('\u5ea6\u5206\u79d2 / DMS',
+      `${decToDMS(parseFloat(p.lat), true)}  ${decToDMS(parseFloat(p.lon), false)}`);
+  }
+
+  if (locationData?.altitude != null)
+    dataRow('\u6d77\u62d4 / Altitude', `${Math.round(locationData.altitude)} m`);
+
+  if (locationData?.accuracy)
+    dataRow('\u5b9a\u4f4d\u7cbe\u5ea6 / Accuracy', `\u00b1${Math.round(locationData.accuracy)} m`);
+
+  if (p.street)
+    dataRow('\u5730\u5740 / Location', p.street, [240, 208, 128]);
+
+  if (p.note)
+    dataRow('\u5099\u8a3b / Note', p.note, [240, 208, 128]);
+
+  dataRow('\u62cd\u651d\u6642\u9593 / Time', p.time);
+
+  // ── Bottom bar ──
+  doc.setFillColor(...cGold);
+  doc.rect(0, PH - 7, PW, 7, 'F');
+  doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...cInk);
+  doc.text('Photo Compass  |  kftseng2oo1.github.io/compass', mg, PH - 2.5);
+
+  // ── Share or download ──
+  const filename = `compass_${p.dir.zh}_${p.heading}deg_${Date.now()}.pdf`;
+  const pdfBlob = doc.output('blob');
+
+  if (navigator.share && navigator.canShare) {
+    const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+    if (navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: '\u62cd\u7167\u7f85\u76e4\u6e2c\u91cf\u5831\u544a' });
+        return;
+      } catch(e) {
+        if (e.name === 'AbortError') return;
+      }
+    }
+  }
+  // Fallback download
+  const url = URL.createObjectURL(pdfBlob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
 </script>
 
 <script>
