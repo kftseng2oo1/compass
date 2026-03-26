@@ -310,7 +310,7 @@
     width: 100%;
     background: linear-gradient(180deg, rgba(10,10,15,0.97) 0%, rgba(5,5,8,1) 100%);
     border-top: 1px solid var(--border);
-    padding: 10px 16px 14px;
+    padding: 8px 16px 12px;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -1325,7 +1325,8 @@ function updateCompassRose(h) {
   const canvas = document.getElementById('compass-rose');
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
-  const cx = W/2, cy = H/2;
+  // Disc occupies top 110px, pill occupies bottom 20px
+  const cx = W/2, cy = W/2;   // disc centre = centre of the square top portion
   const rOuter = W/2 - 4;
   const rDisc  = rOuter * 0.66;
 
@@ -1454,12 +1455,13 @@ function updateCompassRose(h) {
   ctx.fillStyle='#c8a84b'; ctx.shadowColor='rgba(200,168,75,1)'; ctx.shadowBlur=8; ctx.fill();
   ctx.restore();
 
-  // ── Degree pill below disc ──
+  // ── Degree pill — sits in the bottom 20px strip ──
   ctx.save();
   const degStr = Math.round(h)+'°';
-  ctx.font = `bold ${Math.round(rDisc*0.32)}px sans-serif`;
+  ctx.font = `bold ${Math.round(rDisc*0.30)}px sans-serif`;
   const tw = ctx.measureText(degStr).width;
-  const pillW = tw+10, pillH = rDisc*0.38, pillY = cy+rDisc+7+pillH/2;
+  const pillW = tw+10, pillH = rDisc*0.36;
+  const pillY = W + (H - W)/2;  // vertically centred in bottom strip
   ctx.fillStyle='rgba(0,0,0,0.55)';
   ctx.beginPath(); ctx.roundRect(cx-pillW/2, pillY-pillH/2, pillW, pillH, pillH/2); ctx.fill();
   ctx.textAlign='center'; ctx.textBaseline='middle';
