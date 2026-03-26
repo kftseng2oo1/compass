@@ -1315,18 +1315,14 @@ function toggleCompassMode() {
 }
 
 // ════════════════════════════════════════════
-// Compass Rose Canvas  — redesigned
-//   Layer 1: outer tick ring (rotates in dial mode)
-//   Layer 2: fixed quadrant disc with 東南西北 (always fixed)
-//   Layer 3: semi-transparent needle (rotates to north)
-//   Layer 4: pivot dot + degree readout
+// Compass Rose Canvas
 // ════════════════════════════════════════════
-function updateCompassRose(h) {
+function updateCompassRose(heading) {
   const canvas = document.getElementById('compass-rose');
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
-  // Disc occupies top 110px, pill occupies bottom 20px
-  const cx = W/2, cy = W/2;   // disc centre = centre of the square top portion
+  const scale = 1;
+  const cx = W/2, cy = W/2;
   const rOuter = W/2 - 4;
   const rDisc  = rOuter * 0.66;
 
@@ -1334,58 +1330,63 @@ function updateCompassRose(h) {
 
   // Outer glow
   ctx.save();
-  const grd = ctx.createRadialGradient(cx, cy, rDisc, cx, cy, rOuter+6);
-  grd.addColorStop(0, 'rgba(200,168,75,0.10)');
+  const grd = ctx.createRadialGradient(cx, cy, rDisc, cx, cy, rOuter+8);
+  grd.addColorStop(0, 'rgba(200,168,75,0.12)');
   grd.addColorStop(1, 'transparent');
-  ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(cx, cy, rOuter+6, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = grd;
+  ctx.beginPath(); ctx.arc(cx, cy, rOuter+8, 0, Math.PI*2); ctx.fill();
   ctx.restore();
 
   // ── LAYER 1: Outer tick ring ──
-  const dialRot   = compassMode === 'dial' ? -h * Math.PI / 180 : 0;
-  const needleRot = compassMode === 'dial' ? 0 : -h * Math.PI / 180;
+  const dialRot   = compassMode === 'dial'   ? -heading * Math.PI/180 : 0;
+  const needleRot = compassMode === 'needle' ? -heading * Math.PI/180 : 0;
 
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(dialRot);
 
   ctx.beginPath(); ctx.arc(0, 0, rOuter, 0, Math.PI*2);
-  ctx.strokeStyle = 'rgba(200,168,75,0.6)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.strokeStyle = 'rgba(200,168,75,0.65)';
+  ctx.lineWidth = 1.5; ctx.stroke();
 
   for (let i = 0; i < 360; i += 5) {
-    const rad = i * Math.PI / 180;
+    const rad = i * Math.PI/180;
     const isMajor = i % 90 === 0;
     const isMid   = i % 45 === 0;
     const len = isMajor ? 10 : isMid ? 6 : 3.5;
-    const x1 = Math.sin(rad) * rOuter, y1 = -Math.cos(rad) * rOuter;
-    const x2 = Math.sin(rad) * (rOuter - len), y2 = -Math.cos(rad) * (rOuter - len);
-    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.beginPath();
+    ctx.moveTo(Math.sin(rad)*rOuter, -Math.cos(rad)*rOuter);
+    ctx.lineTo(Math.sin(rad)*(rOuter-len), -Math.cos(rad)*(rOuter-len));
     ctx.strokeStyle = isMajor ? 'rgba(200,168,75,0.95)' : isMid ? 'rgba(200,168,75,0.55)' : 'rgba(200,168,75,0.2)';
-    ctx.lineWidth = isMajor ? 1.5 : 0.8; ctx.stroke();
+    ctx.lineWidth = isMajor ? 1.5 : 0.8;
+    ctx.stroke();
   }
 
-  // Outer ring degree labels
   const outerLabels = [
-    {deg:0,txt:'N',col:'#e74c3c'},{deg:45,txt:'NE',col:'rgba(200,168,75,0.7)'},
-    {deg:90,txt:'E',col:'rgba(200,168,75,0.85)'},{deg:135,txt:'SE',col:'rgba(200,168,75,0.7)'},
-    {deg:180,txt:'S',col:'rgba(200,168,75,0.85)'},{deg:225,txt:'SW',col:'rgba(200,168,75,0.7)'},
-    {deg:270,txt:'W',col:'rgba(200,168,75,0.85)'},{deg:315,txt:'NW',col:'rgba(200,168,75,0.7)'},
+    {d:0,t:'N',c:'#e74c3c'},{d:45,t:'NE',c:'rgba(200,168,75,0.75)'},
+    {d:90,t:'E',c:'rgba(200,168,75,0.85)'},{d:135,t:'SE',c:'rgba(200,168,75,0.7)'},
+    {d:180,t:'S',c:'rgba(200,168,75,0.85)'},{d:225,t:'SW',c:'rgba(200,168,75,0.7)'},
+    {d:270,t:'W',c:'rgba(200,168,75,0.85)'},{d:315,t:'NW',c:'rgba(200,168,75,0.7)'},
   ];
-  ctx.font = `bold ${Math.round(rOuter*0.15)}px sans-serif`;
+  ctx.font = `bold ${Math.round(rOuter*0.16)}px sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  outerLabels.forEach(d => {
-    const rad = d.deg * Math.PI / 180;
-    ctx.fillStyle = d.col;
-    ctx.fillText(d.txt, Math.sin(rad)*(rOuter-15), -Math.cos(rad)*(rOuter-15));
+  outerLabels.forEach(l => {
+    const r2 = l.d * Math.PI/180;
+    ctx.fillStyle = l.c;
+    ctx.fillText(l.t, Math.sin(r2)*(rOuter-15), -Math.cos(r2)*(rOuter-15));
   });
   ctx.restore();
 
-  // Dial mode fixed red marker at 12-o'clock
   if (compassMode === 'dial') {
     ctx.save(); ctx.translate(cx, cy);
     ctx.beginPath();
-    ctx.moveTo(0, -(rOuter+1)); ctx.lineTo(4, -(rOuter-9)); ctx.lineTo(-4, -(rOuter-9));
+    ctx.moveTo(0, -(rOuter+1));
+    ctx.lineTo(4, -(rOuter-9));
+    ctx.lineTo(-4, -(rOuter-9));
     ctx.closePath();
-    ctx.fillStyle = '#e74c3c'; ctx.shadowColor = 'rgba(231,76,60,0.9)'; ctx.shadowBlur = 7; ctx.fill();
+    ctx.fillStyle = '#e74c3c';
+    ctx.shadowColor = 'rgba(231,76,60,0.9)'; ctx.shadowBlur = 7;
+    ctx.fill();
     ctx.restore();
   }
 
@@ -1396,75 +1397,63 @@ function updateCompassRose(h) {
   ctx.fillStyle = 'rgba(8,8,14,0.92)'; ctx.fill();
   ctx.strokeStyle = 'rgba(200,168,75,0.40)'; ctx.lineWidth = 1.2; ctx.stroke();
 
-  // Cross lines
-  ctx.strokeStyle = 'rgba(200,168,75,0.13)'; ctx.lineWidth = 0.7;
+  ctx.strokeStyle = 'rgba(200,168,75,0.15)'; ctx.lineWidth = 0.8;
   ctx.beginPath(); ctx.moveTo(0,-rDisc); ctx.lineTo(0,rDisc); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(-rDisc,0); ctx.lineTo(rDisc,0); ctx.stroke();
 
-  // Diagonal faint lines
   ctx.strokeStyle = 'rgba(200,168,75,0.07)'; ctx.lineWidth = 0.5;
   [-45,45].forEach(a => {
-    const rad = a * Math.PI/180;
+    const r2 = a * Math.PI/180;
     ctx.beginPath();
-    ctx.moveTo(-Math.sin(rad)*rDisc, -Math.cos(rad)*rDisc);
-    ctx.lineTo(Math.sin(rad)*rDisc, Math.cos(rad)*rDisc);
+    ctx.moveTo(-Math.sin(r2)*rDisc, -Math.cos(r2)*rDisc);
+    ctx.lineTo(Math.sin(r2)*rDisc, Math.cos(r2)*rDisc);
     ctx.stroke();
   });
 
-  // Inner circle guide
   ctx.beginPath(); ctx.arc(0,0,rDisc*0.82,0,Math.PI*2);
-  ctx.strokeStyle='rgba(200,168,75,0.1)'; ctx.lineWidth=0.5; ctx.stroke();
+  ctx.strokeStyle='rgba(200,168,75,0.10)'; ctx.lineWidth=0.5; ctx.stroke();
 
-  // 東南西北 labels — fixed, large, centre of each quadrant arm
   const zhLabels = [
-    {zh:'北', ang:0,   col:'rgba(231,76,60,0.90)', fs:rDisc*0.38},
-    {zh:'南', ang:180, col:'rgba(200,168,75,0.70)', fs:rDisc*0.32},
-    {zh:'東', ang:90,  col:'rgba(200,168,75,0.70)', fs:rDisc*0.32},
-    {zh:'西', ang:270, col:'rgba(200,168,75,0.70)', fs:rDisc*0.32},
+    {zh:'北',a:0,  c:'rgba(231,76,60,0.92)', fs:rDisc*0.38},
+    {zh:'南',a:180,c:'rgba(200,168,75,0.72)', fs:rDisc*0.32},
+    {zh:'東',a:90, c:'rgba(200,168,75,0.72)', fs:rDisc*0.32},
+    {zh:'西',a:270,c:'rgba(200,168,75,0.72)', fs:rDisc*0.32},
   ];
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
   zhLabels.forEach(d => {
-    const rad = d.ang * Math.PI/180;
+    const r2 = d.a*Math.PI/180;
     ctx.font = `900 ${Math.round(d.fs)}px "Noto Serif TC",serif`;
-    ctx.fillStyle = d.col;
-    ctx.fillText(d.zh, Math.sin(rad)*rDisc*0.50, -Math.cos(rad)*rDisc*0.50);
+    ctx.fillStyle = d.c;
+    ctx.fillText(d.zh, Math.sin(r2)*rDisc*0.50, -Math.cos(r2)*rDisc*0.50);
   });
-
   ctx.restore();
 
-  // ── LAYER 3: Needle — extends from disc edge to disc edge, clearly visible ──
+  // ── LAYER 3: Needle ──
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(needleRot);
 
-  // Needle spans full disc diameter: north tip at -rOuter*0.88, south at +rDisc*0.72
-  const nl = rOuter * 0.88;   // north tip reaches into outer ring
-  const ns = rDisc  * 0.68;   // south tip inside disc
-  const nw = rOuter * 0.09;   // half-width at waist
+  const nl = rOuter * 0.88;
+  const ns = rDisc  * 0.68;
+  const nw = rOuter * 0.09;
 
-  // North tip (red) — diamond shape for clarity
   ctx.beginPath();
-  ctx.moveTo(0, -nl);           // tip
-  ctx.lineTo( nw,  -rDisc*0.1); // right shoulder
-  ctx.lineTo(0,     ns * 0.05); // waist
-  ctx.lineTo(-nw,  -rDisc*0.1); // left shoulder
+  ctx.moveTo(0, -nl);
+  ctx.lineTo( nw, -rDisc*0.1);
+  ctx.lineTo(0,   ns*0.05);
+  ctx.lineTo(-nw, -rDisc*0.1);
   ctx.closePath();
   ctx.fillStyle = '#e74c3c';
   ctx.shadowColor = 'rgba(231,76,60,0.9)'; ctx.shadowBlur = 16;
   ctx.fill();
+  ctx.strokeStyle = 'rgba(255,180,180,0.5)'; ctx.lineWidth = 0.8; ctx.stroke();
 
-  // North tip bright edge highlight
-  ctx.strokeStyle = 'rgba(255,200,200,0.5)'; ctx.lineWidth = 0.8;
-  ctx.stroke();
-
-  // South tip (gold)
   ctx.beginPath();
-  ctx.moveTo(0,   ns);
+  ctx.moveTo(0,  ns);
   ctx.lineTo( nw*0.7, rDisc*0.05);
-  ctx.lineTo(0,   0);
+  ctx.lineTo(0,  0);
   ctx.lineTo(-nw*0.7, rDisc*0.05);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(200,168,75,0.80)';
-  ctx.shadowColor = 'rgba(200,168,75,0.4)'; ctx.shadowBlur = 6;
-  ctx.fill();
+  ctx.fillStyle = 'rgba(200,168,75,0.82)';
+  ctx.shadowColor='rgba(200,168,75,0.4)'; ctx.shadowBlur=6; ctx.fill();
 
   ctx.restore();
 
@@ -1474,14 +1463,15 @@ function updateCompassRose(h) {
   ctx.fillStyle='#c8a84b'; ctx.shadowColor='rgba(200,168,75,1)'; ctx.shadowBlur=8; ctx.fill();
   ctx.restore();
 
-  // ── Degree pill — sits in the bottom 20px strip ──
+  // ── Degree pill ──
   ctx.save();
-  const degStr = Math.round(h)+'°';
+  const h = Math.round(heading);
+  const degStr = h+'°';
   ctx.font = `bold ${Math.round(rDisc*0.30)}px sans-serif`;
   const tw = ctx.measureText(degStr).width;
   const pillW = tw+10, pillH = rDisc*0.36;
-  const pillY = W + (H - W)/2;  // vertically centred in bottom strip
-  ctx.fillStyle='rgba(0,0,0,0.55)';
+  const pillY = W + (H-W)/2;
+  ctx.fillStyle='rgba(0,0,0,0.6)';
   ctx.beginPath(); ctx.roundRect(cx-pillW/2, pillY-pillH/2, pillW, pillH, pillH/2); ctx.fill();
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillStyle = compassAvail ? 'rgba(240,208,128,0.95)' : 'rgba(200,168,75,0.3)';
