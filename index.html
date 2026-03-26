@@ -319,12 +319,12 @@
   /* ── Compass Rose ── */
   #compass-wrapper {
     position: relative;
-    width: 110px; height: 130px;
+    width: 110px; height: 140px;
     flex-shrink: 0;
     cursor: pointer;
   }
   #compass-rose {
-    width: 110px; height: 130px;
+    width: 110px; height: 140px;
     display: block;
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none; touch-action: none;
@@ -743,7 +743,7 @@
   <!-- Compass Panel -->
   <div id="compass-panel">
     <div id="compass-wrapper" title="點擊切換模式・長按手動調整">
-      <canvas id="compass-rose" width="110" height="130"></canvas>
+      <canvas id="compass-rose" width="110" height="140"></canvas>
       <div id="compass-mode-badge">指針</div>
     </div>
 
@@ -1393,8 +1393,8 @@ function updateCompassRose(h) {
   ctx.save(); ctx.translate(cx, cy);
 
   ctx.beginPath(); ctx.arc(0, 0, rDisc, 0, Math.PI*2);
-  ctx.fillStyle = 'rgba(8,8,14,0.88)'; ctx.fill();
-  ctx.strokeStyle = 'rgba(200,168,75,0.28)'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.fillStyle = 'rgba(8,8,14,0.92)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(200,168,75,0.40)'; ctx.lineWidth = 1.2; ctx.stroke();
 
   // Cross lines
   ctx.strokeStyle = 'rgba(200,168,75,0.13)'; ctx.lineWidth = 0.7;
@@ -1438,13 +1438,13 @@ function updateCompassRose(h) {
   const nl = rDisc * 0.80, nw = rDisc * 0.125;
 
   ctx.beginPath(); ctx.moveTo(0,-nl); ctx.lineTo(nw,0); ctx.lineTo(-nw,0); ctx.closePath();
-  ctx.fillStyle = 'rgba(231,76,60,0.80)';
-  ctx.shadowColor = 'rgba(231,76,60,0.55)'; ctx.shadowBlur = 12; ctx.fill();
+  ctx.fillStyle = 'rgba(231,76,60,0.95)';
+  ctx.shadowColor = 'rgba(231,76,60,0.8)'; ctx.shadowBlur = 14; ctx.fill();
 
   ctx.beginPath(); ctx.moveTo(0,nl*0.70); ctx.lineTo(nw*0.6,0); ctx.lineTo(-nw*0.6,0); ctx.closePath();
-  ctx.fillStyle = 'rgba(200,168,75,0.35)'; ctx.shadowBlur = 0; ctx.fill();
+  ctx.fillStyle = 'rgba(200,168,75,0.75)'; ctx.shadowBlur = 0; ctx.fill();
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 0.6;
+  ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 0.8;
   ctx.beginPath(); ctx.moveTo(0,-nl); ctx.lineTo(0,nl*0.70); ctx.stroke();
 
   ctx.restore();
