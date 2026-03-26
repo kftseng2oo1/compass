@@ -1390,8 +1390,11 @@ function updateCompassRose(heading) {
     ctx.restore();
   }
 
-  // ── LAYER 2: Fixed quadrant disc ──
+  // ── LAYER 2: Quadrant disc ──
+  // In dial mode:   disc is FIXED (地理方位固定，刻度盤轉)
+  // In needle mode: disc ROTATES with dialRot (東南西北跟刻度盤一起轉，指針指北)
   ctx.save(); ctx.translate(cx, cy);
+  ctx.rotate(dialRot);  // both modes: disc rotates same as outer ring
 
   ctx.beginPath(); ctx.arc(0, 0, rDisc, 0, Math.PI*2);
   ctx.fillStyle = 'rgba(8,8,14,0.92)'; ctx.fill();
@@ -1414,10 +1417,10 @@ function updateCompassRose(heading) {
   ctx.strokeStyle='rgba(200,168,75,0.10)'; ctx.lineWidth=0.5; ctx.stroke();
 
   const zhLabels = [
-    {zh:'北',a:0,  c:'rgba(231,76,60,0.92)', fs:rDisc*0.38},
-    {zh:'南',a:180,c:'rgba(200,168,75,0.72)', fs:rDisc*0.32},
-    {zh:'東',a:90, c:'rgba(200,168,75,0.72)', fs:rDisc*0.32},
-    {zh:'西',a:270,c:'rgba(200,168,75,0.72)', fs:rDisc*0.32},
+    {zh:'北', a:0,   c:'rgba(231,76,60,0.92)', fs:rDisc*0.38},
+    {zh:'南', a:180, c:'rgba(200,168,75,0.72)', fs:rDisc*0.32},
+    {zh:'東', a:90,  c:'rgba(200,168,75,0.72)', fs:rDisc*0.32},
+    {zh:'西', a:270, c:'rgba(200,168,75,0.72)', fs:rDisc*0.32},
   ];
   ctx.textAlign='center'; ctx.textBaseline='middle';
   zhLabels.forEach(d => {
