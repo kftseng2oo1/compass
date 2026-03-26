@@ -1432,20 +1432,39 @@ function updateCompassRose(h) {
 
   ctx.restore();
 
-  // ── LAYER 3: Semi-transparent needle ──
+  // ── LAYER 3: Needle — extends from disc edge to disc edge, clearly visible ──
   ctx.save(); ctx.translate(cx, cy); ctx.rotate(needleRot);
 
-  const nl = rDisc * 0.80, nw = rDisc * 0.125;
+  // Needle spans full disc diameter: north tip at -rOuter*0.88, south at +rDisc*0.72
+  const nl = rOuter * 0.88;   // north tip reaches into outer ring
+  const ns = rDisc  * 0.68;   // south tip inside disc
+  const nw = rOuter * 0.09;   // half-width at waist
 
-  ctx.beginPath(); ctx.moveTo(0,-nl); ctx.lineTo(nw,0); ctx.lineTo(-nw,0); ctx.closePath();
-  ctx.fillStyle = 'rgba(231,76,60,0.95)';
-  ctx.shadowColor = 'rgba(231,76,60,0.8)'; ctx.shadowBlur = 14; ctx.fill();
+  // North tip (red) — diamond shape for clarity
+  ctx.beginPath();
+  ctx.moveTo(0, -nl);           // tip
+  ctx.lineTo( nw,  -rDisc*0.1); // right shoulder
+  ctx.lineTo(0,     ns * 0.05); // waist
+  ctx.lineTo(-nw,  -rDisc*0.1); // left shoulder
+  ctx.closePath();
+  ctx.fillStyle = '#e74c3c';
+  ctx.shadowColor = 'rgba(231,76,60,0.9)'; ctx.shadowBlur = 16;
+  ctx.fill();
 
-  ctx.beginPath(); ctx.moveTo(0,nl*0.70); ctx.lineTo(nw*0.6,0); ctx.lineTo(-nw*0.6,0); ctx.closePath();
-  ctx.fillStyle = 'rgba(200,168,75,0.75)'; ctx.shadowBlur = 0; ctx.fill();
+  // North tip bright edge highlight
+  ctx.strokeStyle = 'rgba(255,200,200,0.5)'; ctx.lineWidth = 0.8;
+  ctx.stroke();
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 0.8;
-  ctx.beginPath(); ctx.moveTo(0,-nl); ctx.lineTo(0,nl*0.70); ctx.stroke();
+  // South tip (gold)
+  ctx.beginPath();
+  ctx.moveTo(0,   ns);
+  ctx.lineTo( nw*0.7, rDisc*0.05);
+  ctx.lineTo(0,   0);
+  ctx.lineTo(-nw*0.7, rDisc*0.05);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(200,168,75,0.80)';
+  ctx.shadowColor = 'rgba(200,168,75,0.4)'; ctx.shadowBlur = 6;
+  ctx.fill();
 
   ctx.restore();
 
